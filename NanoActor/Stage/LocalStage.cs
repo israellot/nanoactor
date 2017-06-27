@@ -32,12 +32,16 @@ namespace NanoActor
 
         IActorDirectory _actorDirectory;
 
-        public Boolean Enabled { get; set; } = true;
+        public Guid StageGuid { get; private set; }
+
+        public Boolean Enabled { get; set; } = false;
 
         public LocalStage(IServiceProvider services, IActorDirectory actorDirectory) {
             _services = services;
 
             _actorDirectory = actorDirectory;
+
+            StageGuid = Guid.NewGuid();
         }
 
         public Boolean HasInstanceFor<ActorType>(string actorId)
@@ -120,7 +124,7 @@ namespace NanoActor
             else
             {
                 //mark instance
-                await _actorDirectory.RegisterActor(actorType, actorId);
+                await _actorDirectory.RegisterActor(actorType, actorId, StageGuid.ToString());
 
                 //try a registered service
                 var actor = _services.GetRequiredService(actorType);
@@ -134,6 +138,8 @@ namespace NanoActor
 
                 actorInstance = instanceDictionary.GetOrAdd(actorInstance.ActorId, actorInstance);
 
+                ((Actor)actorInstance.Instance).Id = actorId;
+
                 ((Actor)actorInstance.Instance).Run();
 
 
@@ -142,12 +148,37 @@ namespace NanoActor
 
         }
 
-        public async Task<object> Execute(ActorRequest message)
+        public async Task<ActorResponse> Execute(ActorRequest message,TimeSpan? timeout=null)
         {
             var actorInstance = await ActivateInstance(message.ActorInterface, message.ActorId);
 
-            return await ((Actor)actorInstance.Instance).Post(message,TimeSpan.FromSeconds(5));
+            var result =  await ((Actor)actorInstance.Instance).Post(message, timeout);
+
+            if (result is Exception)
+            {
+                var response = new ActorResponse()
+                {
+                    Success = false,
+                    Exception = (Exception)result,
+                    Id = message.Id
+                };
+
+                return response;
+            }
+            else
+            {
+                var response = new ActorResponse()
+                {
+                    Success = true,
+                    Response = result,
+                    Id = message.Id
+                };
+
+                return response;
+            }
         }
+
+        
 
     }
 }

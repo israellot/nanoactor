@@ -9,7 +9,7 @@ namespace NanoActor.Directory
 
    
 
-    public class StageAddress
+    public class StageAddress2
     {
         public Boolean NotFound { get; set; }
         

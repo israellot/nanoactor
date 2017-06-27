@@ -16,11 +16,11 @@ namespace NanoActor.Directory
     public class MemoryActorDirectory : IActorDirectory
     {
 
-        public ConcurrentDictionary<string, object> _hashset;
+        public ConcurrentDictionary<string, string> _hashset;
 
         public MemoryActorDirectory()
         {
-            _hashset = new ConcurrentDictionary<string, object>();
+            _hashset = new ConcurrentDictionary<string, string>();
         }
 
         protected String GetStringKey<ActorType>(string actorId)
@@ -36,43 +36,53 @@ namespace NanoActor.Directory
             return $"{actorTypeName}:{actorId}";
         }
 
-        public async Task<StageAddress> GetAddress(string actorTypeName, string actorId)
+        public async Task<StageAddressQueryResponse> GetAddress(string actorTypeName, string actorId)
         {
-            if (_hashset.TryGetValue(GetStringKey(actorTypeName, actorId), out _))
+            if (_hashset.TryGetValue(GetStringKey(actorTypeName, actorId), out var stageId))
             {
-                return new StageAddress() { IsLocal = true };
+                return new StageAddressQueryResponse() {  Found=true,StageId=stageId };
             }
             else
             {
-                return new StageAddress() { NotFound = true };
+                return new StageAddressQueryResponse() { Found = false };
             }
         }
 
-        public Task<StageAddress> GetAddress(Type actorType, string actorId)
+        public Task<StageAddressQueryResponse> GetAddress(Type actorType, string actorId)
         {
             return GetAddress(actorType.Name, actorId);
         }
 
-        public Task<StageAddress> GetAddress<ActorType>(string actorId)
+        public Task<StageAddressQueryResponse> GetAddress<ActorType>(string actorId)
         {
             return GetAddress(typeof(ActorType), actorId);
         }
 
       
-        public async Task UnregisterActor<ActorType>(string actorId)
+        public  Task UnregisterActor<ActorType>(string actorId,string stageId)
         {
-            _hashset.TryRemove(GetStringKey<ActorType>(actorId), out _);
+            var key = GetStringKey<ActorType>(actorId);
+
+            if (_hashset.TryGetValue(key,out var currentStageId))
+            {
+                if(stageId== currentStageId)
+                    _hashset.TryRemove(key, out _);
+            }
+
+            return Task.CompletedTask;
         }
 
-        public Task RegisterActor<ActorType>(string actorId)
+        public Task RegisterActor<ActorType>(string actorId,string stageId)
         {
 
-            return RegisterActor(typeof(ActorType), actorId);
+            return RegisterActor(typeof(ActorType), actorId, stageId);
         }
 
-        public async Task RegisterActor(Type actorType, string actorId)
+        public Task RegisterActor(Type actorType, string actorId,string stageId)
         {
-            _hashset.AddOrUpdate(GetStringKey(actorType, actorId), actorId, (a, b) => { return b; });
+            _hashset.AddOrUpdate(GetStringKey(actorType, actorId), stageId, (a, b) => stageId);
+
+            return Task.CompletedTask;
         }
 
        

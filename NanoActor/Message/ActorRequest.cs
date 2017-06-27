@@ -18,6 +18,8 @@ namespace NanoActor
 
         public object[] Arguments { get; set; }
 
+        public Boolean FromClient { get; set; }
+
         public ActorRequest() {
             this.Id = Guid.NewGuid();
             this.ActorId = String.Empty;

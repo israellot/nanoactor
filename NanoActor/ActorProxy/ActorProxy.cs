@@ -17,44 +17,27 @@ namespace NanoActor.ActorProxy
     {
         IServiceProvider _services;
 
+
+        ProxyGenerator _proxyGenerator;
+
         public ProxyFactory(IServiceProvider services)
         {
             _services = services;
+            _proxyGenerator = new ProxyGenerator();
         }
 
-        public T GetLocalProxy<T>(string id=null) where T:class
-        {
-            id = id ?? string.Empty;
-            
-            var generator = new Castle.DynamicProxy.ProxyGenerator();
 
-            var proxy = generator.CreateInterfaceProxyWithoutTarget<T>(
-                new ActorPropertyInterceptor(),
-                new LocalActorMethodInterceptor(_services.GetRequiredService<LocalStage>()).ToInterceptor()
-                );
-
-            var p = proxy as IActor;
-            if (p != null)            
-                p.Id = id;
-                                    
-                        
-            return proxy;
-        }
 
         
 
-        public T GetRemoteProxy<T>(string id = null) where T : class
+        public T GetProxy<T>(string id = null) where T : class
         {
-
-            var proxy = RemoteProxyCache<T>.GetOrAdd(() => {
-                var generator = new Castle.DynamicProxy.ProxyGenerator();
-
-                return generator.CreateInterfaceProxyWithoutTarget<T>(
-                    new ActorPropertyInterceptor(),
-                    new RemoteActorMethodInterceptor(_services.GetRequiredService<RemoteStage>()).ToInterceptor()
-                    );
-            });
             
+            var proxy = _proxyGenerator.CreateInterfaceProxyWithoutTarget<T>(
+                new ActorPropertyInterceptor(),
+                new RemoteActorMethodInterceptor(_services.GetRequiredService<RemoteStageClient>()).ToInterceptor()
+                );
+
 
             id = id ?? string.Empty;
 
@@ -66,20 +49,6 @@ namespace NanoActor.ActorProxy
             return proxy;
         }
 
-        static class LocalProxyCache<T> where T : class
-        {
-            private static T _instance;
-
-            public static T GetOrAdd(Func<T> createFunction)
-            {
-                if (_instance == null)
-                    _instance = createFunction();
-
-                return _instance;
-            }
-
-
-        }
 
         static class RemoteProxyCache<T> where T:class
         {
@@ -92,7 +61,6 @@ namespace NanoActor.ActorProxy
 
                 return _instance;
             }
-
             
         }
 

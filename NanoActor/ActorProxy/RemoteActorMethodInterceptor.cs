@@ -9,11 +9,11 @@ namespace NanoActor.ActorProxy
     public class RemoteActorMethodInterceptor : IAsyncInterceptor
     {
 
-        RemoteStage _remoteStage;
+        RemoteStageClient _remoteClient;
 
-        public RemoteActorMethodInterceptor(RemoteStage remoteStage)
+        public RemoteActorMethodInterceptor(RemoteStageClient remoteClient)
         {
-            _remoteStage = remoteStage;
+            _remoteClient = remoteClient;
         }
 
         public void InterceptAsynchronous(IInvocation invocation)
@@ -29,7 +29,7 @@ namespace NanoActor.ActorProxy
                     Arguments = invocation.Arguments
                 };
 
-                var result = await _remoteStage.SendActorRequest(message);
+                var result = await _remoteClient.SendActorRequest(message);
 
                 if (!result.Success)
                 {
@@ -55,7 +55,7 @@ namespace NanoActor.ActorProxy
                     Arguments = invocation.Arguments
                 };
 
-                var result = await _remoteStage.SendActorRequest(message);
+                var result = await _remoteClient.SendActorRequest(message,TimeSpan.FromSeconds(5));
 
                 if (!result.Success)
                 {

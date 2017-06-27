@@ -46,7 +46,7 @@ namespace NanoActor.ClusterInstance
 
             if (!_serviceCollection.Any(s => s.ServiceType == typeof(IRemoteSocketManager)))
             {
-                _serviceCollection.AddSingleton<IRemoteSocketManager, TcpRemoteSocket>();
+                _serviceCollection.AddSingleton<IRemoteSocketManager, ZMQRemoteSocket>();
             }
 
             if (!_serviceCollection.Any(s => s.ServiceType == typeof(LocalStage)))

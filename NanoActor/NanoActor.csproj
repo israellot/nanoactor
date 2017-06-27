@@ -1,23 +1,35 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard1.5</TargetFramework>
+    <TargetFramework>netstandard1.6</TargetFramework>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
 
+
+  <ItemGroup>
+    <Compile Remove="ActorProxy\LocalActorMethodInterceptor.cs" />
+    <Compile Remove="ClusterInstance\TcpStage.cs" />
+    <Compile Remove="ClusterInstance\TcpStageClient.cs" />
+    <Compile Remove="Socket\TcpRemoteSocket.cs" />
+    <Compile Remove="Socket\ZMQRemoteSocket.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Castle.Core" Version="4.1.0" />
     <PackageReference Include="Castle.Core.AsyncInterceptor" Version="1.2.3" />
-    <PackageReference Include="MessagePack" Version="1.3.0" />
+    <PackageReference Include="DotNetty.Codecs" Version="0.4.5" />
+    <PackageReference Include="MessagePack" Version="1.3.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="1.1.1" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="1.1.2" />
-    <PackageReference Include="Moq" Version="4.7.49" />
+    <PackageReference Include="NetMQ" Version="4.0.0.1" />
     <PackageReference Include="Newtonsoft.Json" Version="10.0.3" />
+    <PackageReference Include="Polly" Version="5.1.0" />
     <PackageReference Include="StackExchange.Redis" Version="1.2.3" />
     <PackageReference Include="System.Dynamic.Runtime" Version="4.3.0" />
+    <PackageReference Include="System.IO.Pipes" Version="4.3.0" />
     <PackageReference Include="System.Reflection" Version="4.3.0" />
     <PackageReference Include="System.Reflection.DispatchProxy" Version="4.3.0" />
     <PackageReference Include="System.Reflection.Emit.Lightweight" Version="4.3.0" />

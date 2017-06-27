@@ -11,7 +11,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace NanoActor.ClusterInstance
 {
-    public class InProcessStage
+    public class ZeroMQStage
     {
 
         IServiceCollection _serviceCollection;
@@ -24,7 +24,7 @@ namespace NanoActor.ClusterInstance
 
         Boolean _configured;
 
-        public InProcessStage()
+        public ZeroMQStage()
         {
             _serviceCollection = new ServiceCollection();
 
@@ -67,12 +67,12 @@ namespace NanoActor.ClusterInstance
 
             if (!_serviceCollection.Any(s => s.ServiceType == typeof(ISocketServer)))
             {
-                _serviceCollection.AddSingleton<ISocketServer, PipeSocketServer>();
+                _serviceCollection.AddSingleton<ISocketServer, ZMQSocketServer>();
             }
 
             if (!_serviceCollection.Any(s => s.ServiceType == typeof(ISocketClient)))
             {
-                _serviceCollection.AddSingleton<ISocketClient, PipeSocketClient>();
+                _serviceCollection.AddSingleton<ISocketClient, ZMQSocketClient>();
             }
 
             if (!_serviceCollection.Any(s => s.ServiceType == typeof(LocalStage)))
@@ -93,6 +93,7 @@ namespace NanoActor.ClusterInstance
             _configuration = _configurationBuilder.Build();
 
             _serviceCollection.Configure<NanoServiceOptions>(_configuration.GetSection("ServiceOptions"));
+            _serviceCollection.Configure<TcpOptions>(_configuration.GetSection("TcpOptions"));
 
         }
 

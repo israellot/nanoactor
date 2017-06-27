@@ -6,6 +6,9 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using System.Collections.Generic;
+using NanoActor.Options;
 
 namespace DebugHelper
 {
@@ -14,14 +17,21 @@ namespace DebugHelper
     {
         Task<string> Hello(string hello);
 
+        Task NoReturn(string hello);
+
         Task Throw();
     }
 
     public class TestActor : Actor, ITestActor
     {
-        public async Task<string> Hello(string hello)
+        public Task<string> Hello(string hello)
         {
-            return hello + " World";
+            return Task.FromResult(hello + " World " + this.Id);
+        }
+
+        public async Task NoReturn(string hello)
+        {
+            await Task.Delay(50);
         }
 
         public async Task Throw()
@@ -38,22 +48,51 @@ namespace DebugHelper
         public static void Main(string[] args)
         {
 
-            var stage = new TcpStage();
+            var stage = new ZeroMQStage();
 
-            //var stage = new InProcessStage();
+            var dict = new Dictionary<string, string>
+            {
+                {"ServiceOptions:ServiceName", "TestService"}
+            };
 
-            var clientStage = new TcpStageClient();
-            clientStage.Configure(c => {
-                c.Configure<TcpOptions>(p => { p.Host = "127.0.0.1"; });
-                //c.AddSingleton<ITransportSerializer, MsgPackTransportSerializer>();
+            stage.ConfigureOptions(options => {
+                options.AddJsonFile("appsettings.json");
             });
+            
+            
 
             stage.Configure(c => {
+                                
                 c.AddTransient<ITestActor, TestActor>();
                 //c.AddSingleton<ITransportSerializer, MsgPackTransportSerializer>();
             });
 
             stage.Run();
+
+
+
+            //client
+
+            var clientStage = new ZeroMQStage();
+
+            clientStage.ConfigureOptions(options => {
+                options.AddJsonFile("appsettings.json");
+            });
+
+            clientStage.Configure();
+
+            var testProxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test");
+            testProxy.NoReturn("Hello").Wait();
+
+            Console.ReadKey();
+
+            testProxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test1");
+            testProxy.NoReturn("Hello").Wait();
+
+            testProxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test2");
+            testProxy.NoReturn("Hello").Wait();
+
+            
 
             CancellationTokenSource cts = new CancellationTokenSource();
 
@@ -72,15 +111,79 @@ namespace DebugHelper
                 
             });
 
-            Task.Run(async () => {
+           
 
+            
+
+            Task.Run(async () =>
+            {
+                var proxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test1");
 
                 while (!cts.Token.IsCancellationRequested)
                 {
                     try
                     {
-                        var proxy = clientStage.ProxyFactory.GetRemoteProxy<ITestActor>("test");
+                        //await Task.Delay(5000);
 
+                        var hello = await proxy.Hello("Hello");
+
+                        if (hello != "Hello World test1")
+                        {
+                            var a = "";
+                        }
+
+                        Interlocked.Increment(ref count);
+                    }
+                    catch (Exception ex)
+                    {
+
+                    }
+
+                }
+
+
+            }, cts.Token).ConfigureAwait(false);
+
+            Task.Run(async () =>
+            {
+
+                var proxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test2");
+                while (!cts.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        //await Task.Delay(5000);
+
+                        var hello = await proxy.Hello("Hello");
+
+                        if (hello != "Hello World test2")
+                        {
+                            var a = "";
+                        }
+
+                        Interlocked.Increment(ref count);
+                    }
+                    catch (Exception ex)
+                    {
+
+                    }
+
+                }
+
+
+            }, cts.Token).ConfigureAwait(false);
+
+
+            Task.Run(async () =>
+            {
+
+                var proxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test3");
+                while (!cts.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+
+                        //await Task.Delay(5000);
                         var hello = await proxy.Hello("Hello");
 
                         Interlocked.Increment(ref count);
@@ -95,54 +198,7 @@ namespace DebugHelper
 
             }, cts.Token).ConfigureAwait(false);
 
-            Task.Run(async () => {
 
-
-                while (!cts.Token.IsCancellationRequested)
-                {
-                    try
-                    {
-                        var proxy = clientStage.ProxyFactory.GetRemoteProxy<ITestActor>("test");
-
-                        var hello = await proxy.Hello("Hello");
-
-                        Interlocked.Increment(ref count);
-                    }
-                    catch (Exception ex)
-                    {
-
-                    }
-
-                }
-
-
-
-            }, cts.Token).ConfigureAwait(false);
-
-            Task.Run(async () => {
-
-                
-                while (!cts.Token.IsCancellationRequested)
-                {
-                    try
-                    {
-                        var proxy = clientStage.ProxyFactory.GetRemoteProxy<ITestActor>("test");
-
-                        var hello = await proxy.Hello("Hello");
-
-                        Interlocked.Increment(ref count);
-                    }
-                    catch (Exception ex)
-                    {
-
-                    }
-                      
-                }
-                
-                
-
-
-            }, cts.Token).ConfigureAwait(false);
 
             Console.ReadKey();
 

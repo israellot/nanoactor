@@ -7,17 +7,17 @@ namespace NanoActor.Directory
 {
     public interface IActorDirectory
     {
-        Task<StageAddress> GetAddress<ActorType>(string actorId);
+        Task<StageAddressQueryResponse> GetAddress<ActorType>(string actorId);
 
-        Task<StageAddress> GetAddress(Type actorType, string actorId);
+        Task<StageAddressQueryResponse> GetAddress(Type actorType, string actorId);
 
-        Task<StageAddress> GetAddress(string actorTypeName, string actorId);
+        Task<StageAddressQueryResponse> GetAddress(string actorTypeName, string actorId);
 
-        Task RegisterActor<ActorType>(string actorId);
+        Task RegisterActor<ActorType>(string actorId,string stageId);
 
-        Task RegisterActor(Type actorType, string actorId);
+        Task RegisterActor(Type actorType, string actorId, string stageId);
 
-        Task UnregisterActor<ActorType>(string actorId);
+        Task UnregisterActor<ActorType>(string actorId, string stageId);
 
     }
 }

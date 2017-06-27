@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Threading.Tasks;
 using System.Reflection;
 using System.Threading;
+using NanoActor.Util;
 
 namespace NanoActor
 {
@@ -13,88 +14,84 @@ namespace NanoActor
     public abstract class Actor:IActor
     {
 
-        IActorMessageQueue _messageQueue;
 
-        Task _processTask;
+        OrderedTaskScheduler _taskScheduler;
 
-        CancellationTokenSource _cts;
+        protected static readonly Dictionary<string, MethodInfo> _methodCache = new Dictionary<string, MethodInfo>();
+        protected static readonly Dictionary<string, PropertyInfo> _returnPropertyCache = new Dictionary<string, PropertyInfo>();
 
         public String Id { get; set; }
 
         public Actor()
         {
-            _cts = new CancellationTokenSource();
-
-            _messageQueue = new LocalActorMessageQueue();
+            
+            _taskScheduler = new OrderedTaskScheduler();
             
         }
 
         public void Run()
         {
-            _processTask = ProcessTask(_cts.Token);
-
-            _processTask.ConfigureAwait(false);
+           
+            
         }
 
         public async Task<object> Post(ActorRequest message,TimeSpan? timeout=null,CancellationToken? ct=null)
         {
-            var response = await _messageQueue.EnqueueAndWaitResponse(message, timeout,ct??_cts.Token);
-
-            return response;
-        }
-
-        protected Dictionary<string, MethodInfo> _methodCache = new Dictionary<string, MethodInfo>();
-        protected Dictionary<string, PropertyInfo> _returnPropertyCache = new Dictionary<string, PropertyInfo>();
-
-        public Task ProcessTask(CancellationToken ct)
-        {
-            return Task.Run(async () =>
+            try
             {
-                while (true)
-                {
-                    var message = await _messageQueue.Dequeue(ct);
-
-                    if (message != null)
-                    {
-                        try
-                        {
-                            if(!_methodCache.TryGetValue(message.ActorMethodName,out var method))
-                            {
-                                method = this.GetType().GetMethod(message.ActorMethodName);
-
-                                _methodCache[message.ActorMethodName] = method;
-                            }
-
-                            var task = (Task)method.Invoke(this, message.Arguments);
-
-                            await task;
-
-                            if(!_returnPropertyCache.TryGetValue(message.ActorMethodName,out var resultProperty))
-                            {
-                                resultProperty = task.GetType().GetProperty("Result");
-                                _returnPropertyCache[message.ActorMethodName] = resultProperty;
-                            }
-
-                            if (resultProperty != null)
-                            {
-                                var result = resultProperty.GetValue(task);
-
-                                _messageQueue.EnqueueResponse(message, result);
-                            }
-                        }catch(Exception ex)
-                        {
-                            _messageQueue.EnqueueResponse(message, ex);
-                        }
-                    }
-                    else
-                    {
-                        if (ct.IsCancellationRequested)
-                            break;
-                    }
-                }
                 
-            });
+                var taskResult = await Task.Factory.StartNew(async () => {
+                    
+                    if (!_methodCache.TryGetValue(message.ActorMethodName, out var method))
+                    {
+                        method = this.GetType().GetMethod(message.ActorMethodName);
+
+                        _methodCache[message.ActorMethodName] = method;
+                    }
+
+                    var workTask = (Task)method.Invoke(this, message.Arguments);
+                    await workTask;
+
+                    if (!_returnPropertyCache.TryGetValue(message.ActorMethodName, out var resultProperty))
+                    {
+                        if (method.ReturnType.IsConstructedGenericType)
+                        {
+                            resultProperty = workTask.GetType().GetProperty("Result");
+                            _returnPropertyCache[message.ActorMethodName] = resultProperty;
+                        }
+                        else
+                        {
+                            _returnPropertyCache[message.ActorMethodName] = null;
+                        }
+                       
+                    }
+
+                    if (resultProperty != null)
+                    {
+                        var result = resultProperty.GetValue(workTask);
+
+                        return result;
+                    }
+
+                    return null;
+
+                }, ct??CancellationToken.None,TaskCreationOptions.None,_taskScheduler);
+
+
+                return taskResult.Result;
+                
+            }
+            catch (Exception ex)
+            {
+                return ex;
+            }
+
+           
         }
+
+       
+
+      
 
     }
 }

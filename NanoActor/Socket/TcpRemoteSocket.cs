@@ -23,6 +23,8 @@ namespace NanoActor
         public int Port { get; set; } = 34567;
 
         public string Host { get; set; } = "0.0.0.0";
+
+        public int MaxClientSockets { get; set; } = 3;
     }
 
 
@@ -36,9 +38,11 @@ namespace NanoActor
 
         BufferBlock<IRemoteSocketData> _messagesBuffer;
 
+        Boolean _isListening;
+
         ConcurrentDictionary<string, TcpClient> _inSockets = new ConcurrentDictionary<string, TcpClient>();
 
-        ConcurrentDictionary<string, TcpClient> _outSockets = new ConcurrentDictionary<string, TcpClient>();
+        ConcurrentDictionary<string, List<TcpClient>> _outSockets = new ConcurrentDictionary<string, List<TcpClient>>();
 
         public TcpRemoteSocket(IServiceProvider services,IOptions<TcpOptions> options)
         {
@@ -67,7 +71,10 @@ namespace NanoActor
             var totalRead = 0;
 
             while (totalRead< count && tcpClient.Client.Connected)
-            {              
+            {
+                //var segment = new ArraySegment<byte>(buffer,totalRead, count - totalRead);
+
+                //var read = await tcpClient.Client.ReceiveAsync(segment, SocketFlags.None);
 
                 var read = await tcpClient.GetStream().ReadAsync(buffer, totalRead, count- totalRead);
                 totalRead += read;
@@ -98,6 +105,7 @@ namespace NanoActor
 
         public Task Listen()
         {
+            _isListening = true;
             try
             {
                 listerner = new TcpListener(IPAddress.Any, _options.Port);
@@ -115,6 +123,7 @@ namespace NanoActor
                             var clientAddress = GetStageAddress(tcpClient);
                             _inSockets.TryAdd(clientAddress.Address, tcpClient);
 
+                            
                             Task.Run(async () => {
                                 //new client accepted
                                 await ProcessSocket(tcpClient);
@@ -153,7 +162,7 @@ namespace NanoActor
 
             try
             {
-                var stream = tcpClient.GetStream();
+                
 
                 while (tcpClient.Connected)
                 {
@@ -235,51 +244,83 @@ namespace NanoActor
             return sent;
         }
 
+        
+
+        protected void ConnectTcpClient(TcpClient tcpClient, StageAddress address)
+        {
+            if (!tcpClient.Connected)
+            {
+                lock (tcpClient)
+                {
+                    if (!tcpClient.Connected)
+                    {
+
+                        //out socket
+                        tcpClient.NoDelay = true;
+                        tcpClient.SendTimeout = 5;
+                        tcpClient.ReceiveTimeout = 5;
+
+                        var hostPort = address.Address.Split(new[] { "tcp://" }, StringSplitOptions.None)[1];
+                        var host = hostPort.Split(':')[0];
+
+                        var port = Int32.Parse(hostPort.Split(':')[1]);
+
+                        tcpClient.ConnectAsync(host, port).Wait();
+
+                        Task.Run(async () => {
+                            await ProcessSocket(tcpClient);
+
+                            if(_outSockets.TryGetValue(address.Address,out var tcpClientList)){
+                                tcpClientList.Remove(tcpClient);
+                            } 
+                           
+                        });
+
+                    }
+                }
+            }
+        }
 
         public async Task<Boolean> Send(StageAddress address, byte[] data)
         {
             if (address.Address == null)
                 address = await LocalAddress();
 
-            if(!_inSockets.TryGetValue(address.Address,out var tcpClient))
+            TcpClient tcpClient;
+
+            if (_isListening)
             {
-                tcpClient = _outSockets.GetOrAdd(address.Address, new TcpClient());
-
-                if (!tcpClient.Connected)
+                //on stage
+                if (_inSockets.TryGetValue(address.Address, out tcpClient))
                 {
-                    lock (tcpClient)
-                    {
-                        if (!tcpClient.Connected)
-                        {
+                   
+                    return await SendSocketMessage(tcpClient, data) > 0;
 
-                            //out socket
-                            tcpClient.NoDelay = true;
-                            tcpClient.SendTimeout = 5;
-                            tcpClient.ReceiveTimeout = 5;
-
-                            var hostPort = address.Address.Split(new[] { "tcp://" }, StringSplitOptions.None)[1];
-                            var host = hostPort.Split(':')[0];
-
-                            var port = Int32.Parse(hostPort.Split(':')[1]);
-
-                            tcpClient.ConnectAsync(host, port).Wait();
-
-                            Task.Run(async () => {
-                                await ProcessSocket(tcpClient);
-                                _outSockets.TryRemove(address.Address, out _);
-                            });
-
-                        }
-                    }
                 }
-                
+
             }
 
-           
+
+            //on client
+            var tcpClientList = _outSockets.GetOrAdd(address.Address, new List<TcpClient>());
+
+            if (tcpClientList.Count < _options.MaxClientSockets)
+            {
+                tcpClient = new TcpClient();
+                lock (tcpClientList)
+                {
+                    tcpClientList.Add(tcpClient);
+                }
+            }
+            else
+            {
+                tcpClient = tcpClientList.OrderBy(c => Guid.NewGuid()).First();
+            }
+
+            ConnectTcpClient(tcpClient, address);
 
 
             var sent = await SendSocketMessage(tcpClient, data);
-
             return sent > 0;
 
            

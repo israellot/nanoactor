@@ -7,9 +7,9 @@ namespace NanoActor
 {
     public class RemoteStageMessage
     {
-        public StageAddress Source { get; set; }
+        public SocketAddress Source { get; set; }
 
-        public StageAddress Destination { get; set; }
+        public SocketAddress Destination { get; set; }
 
 
         public Boolean IsActorResponse { get; set; }

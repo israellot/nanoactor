@@ -10,7 +10,7 @@ namespace NanoActor.Util
     /// Provides a task scheduler that ensures a maximum concurrency level while
     /// running on top of the ThreadPool.
     /// </summary>
-    public class LimitedConcurrencyLevelTaskScheduler : TaskScheduler
+    public class OrderedTaskScheduler : TaskScheduler
     {
         /// <summary>Whether the current thread is processing work items.</summary>
         [ThreadStatic]
@@ -18,7 +18,7 @@ namespace NanoActor.Util
         /// <summary>The list of tasks to be executed.</summary>
         private readonly LinkedList<Task> _tasks = new LinkedList<Task>(); // protected by lock(_tasks)
         /// <summary>The maximum concurrency level allowed by this scheduler.</summary>
-        private readonly int _maxDegreeOfParallelism;
+        
         /// <summary>Whether the scheduler is currently processing work items.</summary>
         private int _delegatesQueuedOrRunning = 0; // protected by lock(_tasks)
 
@@ -27,10 +27,10 @@ namespace NanoActor.Util
         /// specified degree of parallelism.
         /// </summary>
         /// <param name="maxDegreeOfParallelism">The maximum degree of parallelism provided by this scheduler.</param>
-        public LimitedConcurrencyLevelTaskScheduler(int maxDegreeOfParallelism)
+        public OrderedTaskScheduler()
         {
-            if (maxDegreeOfParallelism < 1) throw new ArgumentOutOfRangeException("maxDegreeOfParallelism");
-            _maxDegreeOfParallelism = maxDegreeOfParallelism;
+           
+           
         }
 
         /// <summary>Queues a task to the scheduler.</summary>
@@ -42,7 +42,7 @@ namespace NanoActor.Util
             lock (_tasks)
             {
                 _tasks.AddLast(task);
-                if (_delegatesQueuedOrRunning < _maxDegreeOfParallelism)
+                if (_delegatesQueuedOrRunning < 1)
                 {
                     ++_delegatesQueuedOrRunning;
                     NotifyThreadPoolOfPendingWork();
@@ -114,8 +114,7 @@ namespace NanoActor.Util
             lock (_tasks) return _tasks.Remove(task);
         }
 
-        /// <summary>Gets the maximum concurrency level supported by this scheduler.</summary>
-        public sealed override int MaximumConcurrencyLevel { get { return _maxDegreeOfParallelism; } }
+        
 
         /// <summary>Gets an enumerable of the tasks currently scheduled on this scheduler.</summary>
         /// <returns>An enumerable of the tasks currently scheduled.</returns>
