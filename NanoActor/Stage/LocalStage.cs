@@ -138,9 +138,9 @@ namespace NanoActor
 
                 actorInstance = instanceDictionary.GetOrAdd(actorInstance.ActorId, actorInstance);
 
-                ((Actor)actorInstance.Instance).Id = actorId;
+                ((IActor)actorInstance.Instance).Id = actorId;
 
-                ((Actor)actorInstance.Instance).Run();
+                ((IActor)actorInstance.Instance).Run();
 
 
                 return actorInstance;
@@ -152,7 +152,7 @@ namespace NanoActor
         {
             var actorInstance = await ActivateInstance(message.ActorInterface, message.ActorId);
 
-            var result =  await ((Actor)actorInstance.Instance).Post(message, timeout);
+            var result =  await ((IActor)actorInstance.Instance).Post(message, timeout);
 
             if (result is Exception)
             {

@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using System.Threading.Tasks.Dataflow;
 using NanoActor.Directory;
-
+using System.Threading;
 
 namespace NanoActor
 {
@@ -27,6 +27,8 @@ namespace NanoActor
                
         
         ConcurrentDictionary<string, BufferBlock<ActorResponse>> _serverResponseBuffer = new ConcurrentDictionary<string, BufferBlock<ActorResponse>>();
+
+
 
         public RemoteStageClient(
             IServiceProvider services,
@@ -112,16 +114,25 @@ namespace NanoActor
             {
                 //we are inside a stage, forward to server
 
-                var buffer = _serverResponseBuffer.GetOrAdd(request.Id.ToString(), new BufferBlock<ActorResponse>());
+                if (request.FireAndForget)
+                {
+                    await _stageServer.ReceivedActorRequest(request, null);
+                    return new ActorResponse() { Success = true };
+                }
+                else
+                {
+                    var buffer = _serverResponseBuffer.GetOrAdd(request.Id.ToString(), new BufferBlock<ActorResponse>());
 
-                await _stageServer.ReceivedActorRequest(request, null);
+                    await _stageServer.ReceivedActorRequest(request, null);
 
-                var response = await buffer.ReceiveAsync(timeout.Value);
+                    var response = await buffer.ReceiveAsync(timeout.Value);
 
-                buffer.Complete();
-                _serverResponseBuffer.TryRemove(request.Id.ToString(),out _);
+                    buffer.Complete();
+                    _serverResponseBuffer.TryRemove(request.Id.ToString(), out _);
 
-                return response;
+                    return response;
+                }
+              
             }
             else
             {
@@ -158,18 +169,31 @@ namespace NanoActor
                 IsActorRequest = true
             };
 
-            var buffer = _serverResponseBuffer.GetOrAdd(request.Id.ToString(), new BufferBlock<ActorResponse>());
+            if (request.FireAndForget)
+            {
+                await _socketClient.SendRequest(stageAddress == null ? null : stageAddress.SocketAddress, _serializer.Serialize(message));
 
-            await _socketClient.SendRequest(stageAddress==null?null:stageAddress.SocketAddress, _serializer.Serialize(message));
+                return new ActorResponse() { Success = true };
+            }
+            else
+            {
+                var buffer = _serverResponseBuffer.GetOrAdd(request.Id.ToString(), new BufferBlock<ActorResponse>());
 
-            var response = await buffer.ReceiveAsync(timeout??TimeSpan.FromMilliseconds(-1));
+                await _socketClient.SendRequest(stageAddress == null ? null : stageAddress.SocketAddress, _serializer.Serialize(message));
 
-            buffer.Complete();
-            _serverResponseBuffer.TryRemove(request.Id.ToString(), out _);
+                var response = await buffer.ReceiveAsync(timeout ?? TimeSpan.FromMilliseconds(-1));
 
-            return response;
+                buffer.Complete();
+                _serverResponseBuffer.TryRemove(request.Id.ToString(), out _);
+
+                return response;
+            }
+
+            
 
         }
+
+
 
     }
 }

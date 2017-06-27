@@ -65,22 +65,35 @@ namespace NanoActor
                                 _methodCache[message.ActorMethodName] = method;
                             }
 
-                            var task = (Task)method.Invoke(this, message.Arguments);
+                            var workTask = (Task)method.Invoke(this, message.Arguments);
 
-                            await task;
+                            await workTask;
 
                             if(!_returnPropertyCache.TryGetValue(message.ActorMethodName,out var resultProperty))
                             {
-                                resultProperty = task.GetType().GetProperty("Result");
-                                _returnPropertyCache[message.ActorMethodName] = resultProperty;
+                                if (method.ReturnType.IsConstructedGenericType)
+                                {
+                                    resultProperty = workTask.GetType().GetProperty("Result");
+                                    _returnPropertyCache[message.ActorMethodName] = resultProperty;
+                                }
+                                else
+                                {
+                                    _returnPropertyCache[message.ActorMethodName] = null;
+                                }
                             }
+
 
                             if (resultProperty != null)
                             {
-                                var result = resultProperty.GetValue(task);
+                                var result = resultProperty.GetValue(workTask);
 
                                 _messageQueue.EnqueueResponse(message, result);
                             }
+                            else
+                            {
+                                _messageQueue.EnqueueResponse(message, null);
+                            }
+                            
                         }catch(Exception ex)
                         {
                             _messageQueue.EnqueueResponse(message, ex);

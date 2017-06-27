@@ -30,12 +30,12 @@ namespace NanoActor.ActorProxy
 
         
 
-        public T GetProxy<T>(string id = null) where T : class
+        public T GetProxy<T>(string id = null,Boolean fireAndForget=false) where T : class
         {
             
             var proxy = _proxyGenerator.CreateInterfaceProxyWithoutTarget<T>(
                 new ActorPropertyInterceptor(),
-                new RemoteActorMethodInterceptor(_services.GetRequiredService<RemoteStageClient>()).ToInterceptor()
+                new RemoteActorMethodInterceptor(_services.GetRequiredService<RemoteStageClient>(), fireAndForget).ToInterceptor()
                 );
 
 

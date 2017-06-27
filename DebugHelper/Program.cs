@@ -9,11 +9,12 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using System.Collections.Generic;
 using NanoActor.Options;
+using StackExchange.Redis;
 
 namespace DebugHelper
 {
 
-    public interface ITestActor : IActor
+    public interface ITestActor :IActor
     {
         Task<string> Hello(string hello);
 
@@ -43,12 +44,70 @@ namespace DebugHelper
     class Program
     {
 
-        
+        public static void Main2(string[] args)
+        {
+            var multiplexer = ConnectionMultiplexer.Connect("localhost");
+
+            var multiplexer2 = ConnectionMultiplexer.Connect("localhost");
+
+            var req = 0;
+            var resp = 0;
+
+            var sub1 = multiplexer.GetSubscriber();
+            var sub2 = multiplexer2.GetSubscriber();
+
+           
+
+            sub1.Subscribe("in1", (c, v) => {
+
+                Interlocked.Increment(ref req);
+
+                sub1.PublishAsync("in2", "return", CommandFlags.FireAndForget);
+
+            });
+
+            multiplexer2.GetSubscriber().Subscribe("in2", (c, v) => {
+
+                Interlocked.Increment(ref resp);
+                //sub2.Publish("in1", "message", CommandFlags.FireAndForget);
+
+            });
+
+            //sub2.Publish("in1", "message", CommandFlags.FireAndForget);
+
+            Task.Run(() =>
+            {
+
+                while (true)
+                {
+                    sub2.Publish("in1", "message", CommandFlags.FireAndForget);
+                    SpinWait.SpinUntil(() => { return req - resp == 0; });
+                }
+
+            });
+
+            Stopwatch sw = Stopwatch.StartNew();
+            Task.Run(async () => {
+                while (true)
+                {
+                    await Task.Delay(3000);
+
+                    Console.WriteLine($"{ (double)req / ((double)sw.ElapsedMilliseconds / 1000.0):f2} req/s");
+
+                    Console.WriteLine($"Difference: {req-resp}");
+                }
+                
+
+            });
+
+            Console.ReadKey();
+
+        }
 
         public static void Main(string[] args)
         {
 
-            var stage = new ZeroMQStage();
+            var stage = new RedisStage();
 
             var dict = new Dictionary<string, string>
             {
@@ -67,13 +126,15 @@ namespace DebugHelper
                 //c.AddSingleton<ITransportSerializer, MsgPackTransportSerializer>();
             });
 
+
+
             stage.Run();
 
 
 
             //client
 
-            var clientStage = new ZeroMQStage();
+            var clientStage = new RedisStage();
 
             clientStage.ConfigureOptions(options => {
                 options.AddJsonFile("appsettings.json");
@@ -81,22 +142,23 @@ namespace DebugHelper
 
             clientStage.Configure();
 
-            var testProxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test");
+            var testProxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test",true);
             testProxy.NoReturn("Hello").Wait();
 
             Console.ReadKey();
 
-            testProxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test1");
+            testProxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test1",true);
             testProxy.NoReturn("Hello").Wait();
 
-            testProxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test2");
+            testProxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test2",true);
             testProxy.NoReturn("Hello").Wait();
 
             
 
             CancellationTokenSource cts = new CancellationTokenSource();
 
-            int count = 0;
+            int req = 0;
+            int resp = 0;
             Stopwatch sw = Stopwatch.StartNew();
 
             Task.Run(() => {
@@ -104,8 +166,9 @@ namespace DebugHelper
                 {
                     Thread.Sleep(3000);
 
-                    Console.WriteLine($"{ (double)count / ((double)sw.ElapsedMilliseconds / 1000.0):f2} req/s");
-                    Console.WriteLine($"{ ((double)sw.ElapsedMilliseconds)/(double)count:f2} ms/rq");
+                    Console.WriteLine($"{ (double)req / ((double)sw.ElapsedMilliseconds / 1000.0):f2} req/s");
+                    Console.WriteLine($"{ ((double)sw.ElapsedMilliseconds)/(double)req:f2} ms/rq");
+                    Console.WriteLine($"Backlog: {req - resp}");
                     Console.WriteLine();
                 }
                 
@@ -113,90 +176,49 @@ namespace DebugHelper
 
            
 
-            
-
-            Task.Run(async () =>
+            for(int i = 0; i < 10; i++)
             {
-                var proxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test1");
 
-                while (!cts.Token.IsCancellationRequested)
+                Task.Run(() =>
                 {
-                    try
+                    var proxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test"+i.ToString(),true);
+
+                    while (!cts.Token.IsCancellationRequested)
                     {
-                        //await Task.Delay(5000);
-
-                        var hello = await proxy.Hello("Hello");
-
-                        if (hello != "Hello World test1")
+                        try
                         {
-                            var a = "";
+                            Interlocked.Increment(ref req);
+
+                            proxy.Hello("Hello").ContinueWith((s) => {
+                                Interlocked.Increment(ref resp);
+
+                                if(s.Result!=$"Hello World test" + i)
+                                {
+                                    var a = "";
+                                }
+
+                            });
+
+
+                            SpinWait.SpinUntil(() => { return req - resp < 100*i; });
+
+
+                        }
+                        catch (Exception ex)
+                        {
+
                         }
 
-                        Interlocked.Increment(ref count);
-                    }
-                    catch (Exception ex)
-                    {
-
                     }
 
-                }
 
+                }, cts.Token).ConfigureAwait(false);
 
-            }, cts.Token).ConfigureAwait(false);
+            }
 
-            Task.Run(async () =>
-            {
+           
 
-                var proxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test2");
-                while (!cts.Token.IsCancellationRequested)
-                {
-                    try
-                    {
-                        //await Task.Delay(5000);
-
-                        var hello = await proxy.Hello("Hello");
-
-                        if (hello != "Hello World test2")
-                        {
-                            var a = "";
-                        }
-
-                        Interlocked.Increment(ref count);
-                    }
-                    catch (Exception ex)
-                    {
-
-                    }
-
-                }
-
-
-            }, cts.Token).ConfigureAwait(false);
-
-
-            Task.Run(async () =>
-            {
-
-                var proxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test3");
-                while (!cts.Token.IsCancellationRequested)
-                {
-                    try
-                    {
-
-                        //await Task.Delay(5000);
-                        var hello = await proxy.Hello("Hello");
-
-                        Interlocked.Increment(ref count);
-                    }
-                    catch (Exception ex)
-                    {
-
-                    }
-
-                }
-
-
-            }, cts.Token).ConfigureAwait(false);
+     
 
 
 

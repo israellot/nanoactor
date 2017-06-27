@@ -156,7 +156,12 @@ namespace NanoActor
         {
             var response = await _localStage.Execute(message);
 
-            await this.SendActorResponse(sourceAddress, response);
+            if (!message.FireAndForget)
+            {
+                await this.SendActorResponse(sourceAddress, response);
+            }
+
+           
         }
 
 

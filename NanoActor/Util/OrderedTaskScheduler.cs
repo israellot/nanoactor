@@ -25,8 +25,7 @@ namespace NanoActor.Util
         /// <summary>
         /// Initializes an instance of the LimitedConcurrencyLevelTaskScheduler class with the
         /// specified degree of parallelism.
-        /// </summary>
-        /// <param name="maxDegreeOfParallelism">The maximum degree of parallelism provided by this scheduler.</param>
+        /// </summary>       
         public OrderedTaskScheduler()
         {
            

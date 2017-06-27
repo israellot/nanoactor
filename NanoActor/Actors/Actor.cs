@@ -15,7 +15,7 @@ namespace NanoActor
     {
 
 
-        OrderedTaskScheduler _taskScheduler;
+        TaskScheduler _taskScheduler;
 
         protected static readonly Dictionary<string, MethodInfo> _methodCache = new Dictionary<string, MethodInfo>();
         protected static readonly Dictionary<string, PropertyInfo> _returnPropertyCache = new Dictionary<string, PropertyInfo>();

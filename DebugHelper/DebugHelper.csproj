@@ -25,6 +25,7 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="1.1.2" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="1.1.2" />
     <PackageReference Include="NetMQ" Version="4.0.0.1" />
+    <PackageReference Include="StackExchange.Redis" Version="1.2.4" />
   </ItemGroup>
 
   <ItemGroup>
