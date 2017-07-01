@@ -10,8 +10,6 @@ namespace NanoActor
 
         public SocketAddress SocketAddress { get; set; }
 
-        
-
     }
 
     public class StageAddressQueryResponse

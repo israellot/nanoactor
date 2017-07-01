@@ -13,10 +13,13 @@ namespace NanoActor.ActorProxy
 
         Boolean _fireAndForget;
 
-        public RemoteActorMethodInterceptor(RemoteStageClient remoteClient,Boolean fireAndForget=false)
+        TimeSpan _timeout;
+
+        public RemoteActorMethodInterceptor(RemoteStageClient remoteClient,TimeSpan? timeout=null, Boolean fireAndForget=false)
         {
             _remoteClient = remoteClient;
             _fireAndForget = fireAndForget;
+            _timeout = timeout ?? TimeSpan.FromSeconds(5);
         }
 
         public void InterceptAsynchronous(IInvocation invocation)
@@ -33,8 +36,17 @@ namespace NanoActor.ActorProxy
             };
 
 
-            var task = _remoteClient.SendActorRequest(message)
+            var task = _remoteClient.SendActorRequest(message, _timeout)
                 .ContinueWith((t) => {
+
+                    if (t.IsFaulted)
+                    {
+                        if (t.Exception != null)
+                        {
+                            throw t.Exception;
+                        }
+                    }
+
                     var result = t.Result;
                     if (!result.Success)
                     {
@@ -68,7 +80,7 @@ namespace NanoActor.ActorProxy
                 FireAndForget = _fireAndForget
             };
 
-            var task= _remoteClient.SendActorRequest(message)
+            var task= _remoteClient.SendActorRequest(message, _timeout)
                 .ContinueWith(t =>
                 {
                     if (_fireAndForget)

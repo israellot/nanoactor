@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
 
 namespace NanoActor.Util
 {
@@ -21,7 +22,8 @@ namespace NanoActor.Util
         
         /// <summary>Whether the scheduler is currently processing work items.</summary>
         private int _delegatesQueuedOrRunning = 0; // protected by lock(_tasks)
-
+                       
+                
         /// <summary>
         /// Initializes an instance of the LimitedConcurrencyLevelTaskScheduler class with the
         /// specified degree of parallelism.
@@ -46,6 +48,8 @@ namespace NanoActor.Util
                     ++_delegatesQueuedOrRunning;
                     NotifyThreadPoolOfPendingWork();
                 }
+
+                
             }
         }
 
@@ -72,8 +76,10 @@ namespace NanoActor.Util
                             if (_tasks.Count == 0)
                             {
                                 --_delegatesQueuedOrRunning;
+                                                                
                                 break;
                             }
+                            
 
                             // Get the next item from the queue
                             item = _tasks.First.Value;
@@ -87,6 +93,18 @@ namespace NanoActor.Util
                 // We're done processing items on the current thread
                 finally { _currentThreadIsProcessingItems = false; }
             }, null);
+        }
+
+        //TODO find a better way for it
+        public async Task<Boolean> WaitIdle()
+        {
+            while (true)
+            {
+                if (!_currentThreadIsProcessingItems && _delegatesQueuedOrRunning == 0)
+                    return true;
+
+                await Task.Delay(50);
+            }
         }
 
         /// <summary>Attempts to execute the specified task on the current thread.</summary>

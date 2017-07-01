@@ -9,62 +9,40 @@ using Microsoft.Extensions.Options;
 using NanoActor.Options;
 using Microsoft.Extensions.Configuration;
 using NanoActor.Socket.Redis;
+using NanoActor.PubSub;
+using NanoActor.Redis;
 
 namespace NanoActor.ClusterInstance
 {
-    public class RedisStage
+    public class RedisStage:BaseStage
     {
 
-        IServiceCollection _serviceCollection;
+       
 
-        IServiceProvider _serviceProvider;
-
-        IConfiguration _configuration;
-
-        ConfigurationBuilder _configurationBuilder;
-
-        Boolean _configured;
-
-        public RedisStage()
+        public RedisStage():base()
         {
-            _serviceCollection = new ServiceCollection();
-
-            _configurationBuilder = new ConfigurationBuilder();
+          
 
         }
 
-        public void ConfigureOptions(Action<ConfigurationBuilder> configuration)
+        
+
+        public override  void ConfigureDefaults()
         {
 
-            configuration.Invoke(_configurationBuilder);
-                       
-        }
 
-        public void Configure(Action<IServiceCollection> configureAction)
-        {
-            configureAction.Invoke(_serviceCollection);
-
-            Configure();
-        }
-
-        public void ConfigureDefaults()
-        {
-            _serviceCollection.AddOptions();
-
-            if (!_serviceCollection.Any(s=>s.ServiceType == typeof(ITransportSerializer)))
-            {
-                _serviceCollection.AddSingleton<ITransportSerializer, MsgPackTransportSerializer>();
-            }
+            base.ConfigureDefaults();
 
             if (!_serviceCollection.Any(s => s.ServiceType == typeof(IStageDirectory)))
             {
-                _serviceCollection.AddSingleton<IStageDirectory, MemoryStageDirectory>();
+                _serviceCollection.AddSingleton<IStageDirectory, RedisStageDirectory>();
             }
-
             if (!_serviceCollection.Any(s => s.ServiceType == typeof(IActorDirectory)))
             {
-                _serviceCollection.AddSingleton<IActorDirectory, MemoryActorDirectory>();
+                _serviceCollection.AddSingleton<IActorDirectory, RedisActorDirectory>();
             }
+
+
 
             if (!_serviceCollection.Any(s => s.ServiceType == typeof(ISocketServer)))
             {
@@ -76,63 +54,24 @@ namespace NanoActor.ClusterInstance
                 _serviceCollection.AddSingleton<ISocketClient, RedisSocketClient>();
             }
 
-            if (!_serviceCollection.Any(s => s.ServiceType == typeof(LocalStage)))
+            if (!_serviceCollection.Any(s => s.ServiceType == typeof(IPubSub)))
             {
-                _serviceCollection.AddSingleton<LocalStage>();
+                _serviceCollection.AddSingleton<IPubSub, RedisPubSub>();
             }
 
-            if (!_serviceCollection.Any(s => s.ServiceType == typeof(RemoteStageServer)))
+            if (!_serviceCollection.Any(s => s.ServiceType == typeof(RedisConnectionFactory)))
             {
-                _serviceCollection.AddSingleton<RemoteStageServer>();
+                _serviceCollection.AddSingleton<RedisConnectionFactory>();
             }
 
-            if (!_serviceCollection.Any(s => s.ServiceType == typeof(RemoteStageClient)))
-            {
-                _serviceCollection.AddSingleton<RemoteStageClient>();
-            }
-
-            _configuration = _configurationBuilder.Build();
-
-            _serviceCollection.Configure<NanoServiceOptions>(_configuration.GetSection("ServiceOptions"));
-            _serviceCollection.Configure<TcpOptions>(_configuration.GetSection("TcpOptions"));
             _serviceCollection.Configure<RedisOptions>(_configuration.GetSection("Redis"));
+            _serviceCollection.Configure<RedisSocketOptions>(_configuration.GetSection("Redis"));
+         
+
+            
 
         }
 
-        public void Configure()
-        {
-            ConfigureDefaults();
-
-            _serviceProvider = _serviceCollection.BuildServiceProvider();
-
-            var remoteClient = _serviceProvider.GetRequiredService<RemoteStageClient>();
-
-            _configured = true;
-        }
-
-        public void Run()
-        {
-            
-            var remoteServer = _serviceProvider.GetRequiredService<RemoteStageServer>();
-
-            remoteServer.Run().Wait();
-
-            
-            
-        }
-
-
-        public ProxyFactory ProxyFactory
-        {
-            
-            get {
-
-                if (!_configured) Configure();
-
-                return new ProxyFactory(_serviceProvider);
-
-            }
-        }
         
 
     }

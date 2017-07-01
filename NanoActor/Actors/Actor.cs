@@ -6,37 +6,59 @@ using System.Threading.Tasks;
 using System.Reflection;
 using System.Threading;
 using NanoActor.Util;
+using NanoActor.PubSub;
 
 namespace NanoActor
 {
-    
-    
-    public abstract class Actor:IActor
+
+    public class ActorEvent<T>
     {
+        public String ActorInterface { get; set; }
 
+        public String EventName { get; set; }
 
-        TaskScheduler _taskScheduler;
+        public String ActorId { get; set; }
 
+        public T EventData { get; set; }
+    }
+    
+    
+    public abstract class Actor:IActor,IDisposable
+    {
+        
+        OrderedTaskScheduler _taskScheduler;
+
+        PubSubManager _pubsub;
+                
         protected static readonly Dictionary<string, MethodInfo> _methodCache = new Dictionary<string, MethodInfo>();
         protected static readonly Dictionary<string, PropertyInfo> _returnPropertyCache = new Dictionary<string, PropertyInfo>();
 
         public String Id { get; set; }
 
+        String _activatorInterface;
+
         public Actor()
-        {
+        {            
             
-            _taskScheduler = new OrderedTaskScheduler();
             
         }
 
-        public void Run()
+        internal void Configure(string activatorInterface, PubSubManager pubsub)
         {
-           
-            
+            _activatorInterface = activatorInterface;
+            _pubsub = pubsub;
+        }
+
+        internal void Run()
+        {
+            _taskScheduler = new OrderedTaskScheduler();
         }
 
         public async Task<object> Post(ActorRequest message,TimeSpan? timeout=null,CancellationToken? ct=null)
         {
+            if (_taskScheduler == null)
+                return null;
+
             try
             {
                 
@@ -89,9 +111,19 @@ namespace NanoActor
            
         }
 
-       
+        public Task WaitIdle()
+        {
+            return _taskScheduler.WaitIdle();
+        }
 
-      
+        protected async Task Publish(string eventName, object data)
+        {            
+            await _pubsub.Publish(_activatorInterface,eventName,Id,data);
+        }
 
+        public void Dispose()
+        {
+           
+        }
     }
 }

@@ -15,6 +15,8 @@ namespace NanoActor
         Task<SocketData> Receive();
         Task SendResponse(SocketAddress address, byte[] data);
 
+        Int32 InboundBacklogCount();
+
     }
 
     

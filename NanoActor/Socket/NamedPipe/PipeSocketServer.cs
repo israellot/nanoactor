@@ -184,8 +184,11 @@ namespace NanoActor
 
         }
 
-        
 
-        
+        public int InboundBacklogCount()
+        {
+            return _inputBuffer.Count;
+        }
+
     }
 }

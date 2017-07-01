@@ -79,7 +79,7 @@ namespace NanoActor
 
         public override void ExceptionCaught(IChannelHandlerContext ctx, Exception e)
         {
-            Console.WriteLine("{0}", e.StackTrace);
+            
             ctx.CloseAsync();
         }
         public override bool IsSharable => true;
@@ -182,6 +182,11 @@ namespace NanoActor
             _handler.SendMessage(address, data);
 
             return Task.CompletedTask;
+        }
+
+        public int InboundBacklogCount()
+        {
+            return _inputBuffer.Count;
         }
     }
 }

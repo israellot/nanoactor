@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NanoActor.Options;
 using StackExchange.Redis;
 using System;
@@ -18,9 +19,14 @@ namespace NanoActor.Socket.Redis
 
         NanoServiceOptions _serviceOptions;
 
-        RedisOptions _redisOptions;
+        RedisSocketOptions _redisOptions;
 
         ISubscriber _subscriber => _multiplexer.GetSubscriber();
+
+
+        IStageDirectory _stageDirectory;
+
+        ILogger _logger;
 
         String _inputChannel => $"nano:{_serviceOptions.ServiceName}:{_guid}:*";
 
@@ -30,16 +36,23 @@ namespace NanoActor.Socket.Redis
 
         BufferBlock<SocketData> _inputBuffer = new BufferBlock<SocketData>();
 
-        public RedisSocketClient(IServiceProvider services,IOptions<NanoServiceOptions> serviceOptions, IOptions<RedisOptions> redisOptions)
+        public RedisSocketClient(IServiceProvider services,ILogger<RedisSocketClient> logger, IStageDirectory stageDirectory, IOptions<NanoServiceOptions> serviceOptions, IOptions<RedisSocketOptions> redisOptions)
         {
             this._services = services;
             this._serviceOptions = serviceOptions.Value;
             this._redisOptions = redisOptions.Value;
+            this._stageDirectory = stageDirectory;
+
+            _logger = logger;
 
             _guid = Guid.NewGuid().ToString().Substring(0, 8);
 
             _multiplexer = ConnectionMultiplexer.Connect(_redisOptions.ConnectionString);
             _multiplexer.PreserveAsyncOrder = false;
+                        
+
+            _logger.LogInformation($"Client connected to Redis instance: {_multiplexer.IsConnected}");
+
             
 
             Listen();
@@ -47,7 +60,9 @@ namespace NanoActor.Socket.Redis
 
         protected void MessageReceived(string channel,byte[] message)
         {
+
             
+
             var remoteGuid = channel.Split(':').Last();
 
             var socketData = new SocketData()
@@ -55,7 +70,8 @@ namespace NanoActor.Socket.Redis
                 Address = new SocketAddress()
                 {
                     Address = remoteGuid,
-                    Scheme = "redis"
+                    Scheme = "redis",
+                    StageId=remoteGuid
                 },
                 Data = message
             };
@@ -69,11 +85,22 @@ namespace NanoActor.Socket.Redis
         {
             
 
-            _subscriber.Subscribe(_inputChannel, (c, v) => {
+           
+            try
+            {
+                _subscriber.Subscribe(new RedisChannel(_inputChannel,RedisChannel.PatternMode.Pattern), (c, v) => {
 
-                MessageReceived(c, v);
+                    MessageReceived(c, v);
 
-            });
+                });
+                _logger.LogInformation($"Client listening on channel {_inputChannel}");
+
+            }
+            catch(Exception ex)
+            {
+                _logger.LogCritical("Failed to start listener");                              
+            }
+            
 
             
         }
@@ -82,22 +109,49 @@ namespace NanoActor.Socket.Redis
         {
             return await _inputBuffer.ReceiveAsync();
         }
-                
-        public Task SendRequest(SocketAddress address, byte[] data)
+
+        
+
+        private AsyncLock _initLock = new AsyncLock();
+
+        public async Task SendRequest(SocketAddress address, byte[] data)
         {
-            if(address==null || address.Address == null)
+                        
+            if (address==null || address.Address == null)
             {
-                address = new SocketAddress()
-                {
-                    Scheme = "redis",
-                    Address = _redisOptions.InstanceGuid
-                };
+                var stages = await _stageDirectory.GetAllStages();
+
+                //shuffle
+                var stageId = stages.OrderBy(s => Guid.NewGuid()).FirstOrDefault();
+
+                address = (await _stageDirectory.GetStageAddress(stageId))?.SocketAddress;
+
+
             }
 
-            _subscriber.Publish(_outputChannel(address.Address), data, CommandFlags.FireAndForget|CommandFlags.HighPriority);
+            if (address == null)
+            {
+                _logger.LogError("No live stage to connect to");
+
+                throw new Exception("No live stage to connect to");
+            }
+
+            try
+            {
+                
+                _subscriber.Publish(_outputChannel(address.Address), data, CommandFlags.FireAndForget | CommandFlags.HighPriority);
+                
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("Client Failed to send request");
+              
+            }
 
 
-            return Task.CompletedTask;
+
+
+
         }
     }
 }

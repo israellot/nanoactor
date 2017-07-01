@@ -129,5 +129,10 @@ namespace NanoActor
             return Task.CompletedTask;           
 
         }
+
+        public int InboundBacklogCount()
+        {
+            return _inputBuffer.Count;
+        }
     }
 }

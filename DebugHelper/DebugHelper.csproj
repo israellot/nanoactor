@@ -10,6 +10,10 @@
     <Prefer32Bit>True</Prefer32Bit>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+  </PropertyGroup>
+
   <ItemGroup>
     <None Remove="appsettings.json" />
   </ItemGroup>
@@ -24,11 +28,14 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="1.1.2" />
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="1.1.2" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="1.1.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="1.1.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="1.1.2" />
     <PackageReference Include="NetMQ" Version="4.0.0.1" />
     <PackageReference Include="StackExchange.Redis" Version="1.2.4" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\NanoActor.Test.Actors\NanoActor.Test.Actors.csproj" />
     <ProjectReference Include="..\NanoActor\NanoActor.csproj" />
   </ItemGroup>
 

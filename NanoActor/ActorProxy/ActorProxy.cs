@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Linq;
-
+using NanoActor.PubSub;
 
 namespace NanoActor.ActorProxy
 {
@@ -20,22 +20,22 @@ namespace NanoActor.ActorProxy
 
         ProxyGenerator _proxyGenerator;
 
-        public ProxyFactory(IServiceProvider services)
+        PubSubManager _pubsub;
+
+        public ProxyFactory(IServiceProvider services,PubSubManager pubsub)
         {
+            _pubsub = pubsub;
             _services = services;
             _proxyGenerator = new ProxyGenerator();
         }
+                                
 
-
-
-        
-
-        public T GetProxy<T>(string id = null,Boolean fireAndForget=false) where T : class
+        public T GetProxy<T>(string id = null,TimeSpan? timeout=null,Boolean fireAndForget=false) where T : class
         {
             
             var proxy = _proxyGenerator.CreateInterfaceProxyWithoutTarget<T>(
                 new ActorPropertyInterceptor(),
-                new RemoteActorMethodInterceptor(_services.GetRequiredService<RemoteStageClient>(), fireAndForget).ToInterceptor()
+                new RemoteActorMethodInterceptor(_services.GetRequiredService<RemoteStageClient>(),timeout, fireAndForget).ToInterceptor()
                 );
 
 
@@ -47,6 +47,16 @@ namespace NanoActor.ActorProxy
 
 
             return proxy;
+        }
+
+        public ActorEventProxy GetEventProxy<T>()
+        {
+            return new ActorEventProxy(_pubsub, typeof(T).Name, null);
+        }
+
+        public ActorEventProxy GetEventProxy<T>(string actorId)
+        {
+            return new ActorEventProxy(_pubsub, $"{typeof(T).Namespace}.{typeof(T).Name}", actorId);
         }
 
 

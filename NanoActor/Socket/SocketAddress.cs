@@ -16,5 +16,8 @@ namespace NanoActor
         public Boolean IsClient { get; set; }
         [MessagePack.Key(3)]
         public Boolean IsStage { get; set; }
+        [MessagePack.Key(4)]
+        public String StageId { get; set; }
+
     }
 }

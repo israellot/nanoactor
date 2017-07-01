@@ -6,14 +6,16 @@ using System.Threading.Tasks;
 
 namespace NanoActor
 {
-    public interface IActor
+    public interface IActor:IDisposable
     {
         String Id { get; set; }
 
         Task<object> Post(ActorRequest message, TimeSpan? timeout = null, CancellationToken? ct = null);
 
-        void Run();
+        
     }
+
+    
 
     
 }

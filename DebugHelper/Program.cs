@@ -10,36 +10,14 @@ using Microsoft.Extensions.Configuration;
 using System.Collections.Generic;
 using NanoActor.Options;
 using StackExchange.Redis;
+using NanoActor.Test.Actors;
+using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.Logging;
 
 namespace DebugHelper
 {
 
-    public interface ITestActor :IActor
-    {
-        Task<string> Hello(string hello);
-
-        Task NoReturn(string hello);
-
-        Task Throw();
-    }
-
-    public class TestActor : Actor, ITestActor
-    {
-        public Task<string> Hello(string hello)
-        {
-            return Task.FromResult(hello + " World " + this.Id);
-        }
-
-        public async Task NoReturn(string hello)
-        {
-            await Task.Delay(50);
-        }
-
-        public async Task Throw()
-        {
-            throw new Exception("");
-        }
-    }
+   
 
     class Program
     {
@@ -107,53 +85,45 @@ namespace DebugHelper
         public static void Main(string[] args)
         {
 
-            var stage = new RedisStage();
-
-            var dict = new Dictionary<string, string>
-            {
-                {"ServiceOptions:ServiceName", "TestService"}
-            };
-
-            stage.ConfigureOptions(options => {
-                options.AddJsonFile("appsettings.json");
-            });
             
-            
-
-            stage.Configure(c => {
-                                
-                c.AddTransient<ITestActor, TestActor>();
-                //c.AddSingleton<ITransportSerializer, MsgPackTransportSerializer>();
-            });
-
-
-
-            stage.Run();
-
-
 
             //client
 
             var clientStage = new RedisStage();
 
-            clientStage.ConfigureOptions(options => {
+           
+
+            clientStage.Configure((c, log,options) => {
                 options.AddJsonFile("appsettings.json");
+                log.AddConsole();
+                log.AddDebug(LogLevel.Debug);
             });
 
-            clientStage.Configure();
+            
 
-            var testProxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test",true);
-            testProxy.NoReturn("Hello").Wait();
+         
 
-            Console.ReadKey();
+            while (true)
+            {
+                try
+                {
+                    if (clientStage.Connected().Result)
+                        break;
+                    else
+                        Console.WriteLine("failed to connect");
 
-            testProxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test1",true);
-            testProxy.NoReturn("Hello").Wait();
-
-            testProxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test2",true);
-            testProxy.NoReturn("Hello").Wait();
+                }
+                catch(Exception ex)
+                {
+                    Console.WriteLine("failed to connect");
+                }
+                Thread.Sleep(3000);
+            }
 
             
+
+            Console.WriteLine("Press Key");
+            Console.ReadKey();
 
             CancellationTokenSource cts = new CancellationTokenSource();
 
@@ -164,45 +134,57 @@ namespace DebugHelper
             Task.Run(() => {
                 while (true)
                 {
-                    Thread.Sleep(3000);
+                    Interlocked.Exchange(ref resp,0);
+                    Interlocked.Exchange(ref req, 0);
+                    sw.Restart();
+                    Thread.Sleep(5000);
 
                     Console.WriteLine($"{ (double)req / ((double)sw.ElapsedMilliseconds / 1000.0):f2} req/s");
                     Console.WriteLine($"{ ((double)sw.ElapsedMilliseconds)/(double)req:f2} ms/rq");
-                    Console.WriteLine($"Backlog: {req - resp}");
+                    Console.WriteLine($"Local Backlog: {req - resp}");                    
                     Console.WriteLine();
                 }
                 
             });
 
-           
+            var stop = false;
 
-            for(int i = 0; i < 10; i++)
+            for(int i = 0; i < 100; i++)
             {
 
-                Task.Run(() =>
+                var iCopy = i;
+
+                Task.Run(async () =>
                 {
-                    var proxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test"+i.ToString(),true);
+                    var proxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test"+ iCopy.ToString());
 
                     while (!cts.Token.IsCancellationRequested)
                     {
                         try
                         {
+                            if (stop)
+                                break;
+
                             Interlocked.Increment(ref req);
 
-                            proxy.Hello("Hello").ContinueWith((s) => {
-                                Interlocked.Increment(ref resp);
+                                                        
+                            var helloResponse = await proxy.Hello("Hello");
 
-                                if(s.Result!=$"Hello World test" + i)
-                                {
-                                    var a = "";
-                                }
+                            Interlocked.Increment(ref resp);
 
-                            });
-
-
-                            SpinWait.SpinUntil(() => { return req - resp < 100*i; });
+                            if (helloResponse != $"Hello World test" + iCopy)
+                            {
+                                var a = "";
+                            }
 
 
+                            //SpinWait.SpinUntil(() => { return req - resp < 100* iCopy; });
+
+
+                        }
+                        catch(TimeoutException timeout)
+                        {
+                            Console.WriteLine("Timeout");
                         }
                         catch (Exception ex)
                         {
@@ -216,13 +198,14 @@ namespace DebugHelper
 
             }
 
-           
 
-     
+            Console.WriteLine("Press key to stop");
+            Console.ReadKey();
 
-
+            stop = true;
 
             Console.ReadKey();
+
 
             cts.Cancel();
 

@@ -23,14 +23,7 @@ namespace NanoActor.Directory
             _hashset = new ConcurrentDictionary<string, string>();
         }
 
-        protected String GetStringKey<ActorType>(string actorId)
-        {
-            return GetStringKey(typeof(ActorType), actorId);
-        }
-        protected String GetStringKey(Type actorType,string actorId)
-        {
-            return GetStringKey(actorType.Name, actorId);
-        }
+        
         protected String GetStringKey(string actorTypeName, string actorId)
         {
             return $"{actorTypeName}:{actorId}";
@@ -48,20 +41,11 @@ namespace NanoActor.Directory
             }
         }
 
-        public Task<StageAddressQueryResponse> GetAddress(Type actorType, string actorId)
-        {
-            return GetAddress(actorType.Name, actorId);
-        }
-
-        public Task<StageAddressQueryResponse> GetAddress<ActorType>(string actorId)
-        {
-            return GetAddress(typeof(ActorType), actorId);
-        }
 
       
-        public  Task UnregisterActor<ActorType>(string actorId,string stageId)
+        public  Task UnregisterActor(string actorTypeName,string actorId,string stageId)
         {
-            var key = GetStringKey<ActorType>(actorId);
+            var key = GetStringKey(actorTypeName,actorId);
 
             if (_hashset.TryGetValue(key,out var currentStageId))
             {
@@ -72,19 +56,23 @@ namespace NanoActor.Directory
             return Task.CompletedTask;
         }
 
-        public Task RegisterActor<ActorType>(string actorId,string stageId)
-        {
+        
 
-            return RegisterActor(typeof(ActorType), actorId, stageId);
-        }
-
-        public Task RegisterActor(Type actorType, string actorId,string stageId)
+        public Task RegisterActor(string actorTypeName, string actorId,string stageId)
         {
-            _hashset.AddOrUpdate(GetStringKey(actorType, actorId), stageId, (a, b) => stageId);
+            _hashset.AddOrUpdate(GetStringKey(actorTypeName, actorId), stageId, (a, b) => stageId);
 
             return Task.CompletedTask;
         }
 
-       
+        public Task<string> Reallocate(string actorTypeName, string actorId, string oldStageId)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task Refresh(string actorTypeName, string actorId)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

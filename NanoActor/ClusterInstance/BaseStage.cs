@@ -1,0 +1,169 @@
+﻿using Microsoft.Extensions.DependencyInjection;
+using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Linq;
+using NanoActor.Directory;
+using NanoActor.ActorProxy;
+using Microsoft.Extensions.Options;
+using NanoActor.Options;
+using Microsoft.Extensions.Configuration;
+using NanoActor.Socket.Redis;
+using NanoActor.PubSub;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+
+namespace NanoActor.ClusterInstance
+{
+    public abstract class BaseStage
+    {
+
+        protected IServiceCollection _serviceCollection;
+
+        protected IServiceProvider _serviceProvider;
+
+        protected IConfiguration _configuration;
+
+        protected ConfigurationBuilder _configurationBuilder;
+
+        private static ILoggerFactory _loggerFactory = null;
+
+        protected Boolean _configured;
+
+        RemoteStageClient _remoteClient;
+
+        RemoteStageServer _remoteServer;
+
+        IStageDirectory _stageDirectory;
+
+        public BaseStage()
+        {
+            _serviceCollection = new ServiceCollection();
+
+            _configurationBuilder = new ConfigurationBuilder();
+
+            _loggerFactory = new LoggerFactory();
+
+            _serviceCollection.AddSingleton<ILoggerFactory>(_loggerFactory);
+
+            _serviceCollection.AddLogging();
+
+            //_loggerFactory = _serviceCollection.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
+
+            var gc = System.Runtime.GCSettings.IsServerGC;
+        }
+
+       
+
+        public void Configure(Action<IServiceCollection,ILoggerFactory, IConfigurationBuilder> configureAction)
+        {
+            configureAction.Invoke(_serviceCollection, _loggerFactory,_configurationBuilder);
+
+            var service = _serviceCollection.FirstOrDefault(s => s.ImplementationType == typeof(ILoggerFactory));
+
+            Configure();
+        }
+
+        public virtual void ConfigureDefaults()
+        {
+            _serviceCollection.AddOptions();
+            
+
+            //if (!_serviceCollection.Any(s => s.ServiceType == typeof(ILoggerFactory)))
+            //{
+            //    _serviceCollection.AddSingleton<ILoggerFactory>(_loggerFactory);
+            //}   
+
+            if (!_serviceCollection.Any(s => s.ServiceType == typeof(ITransportSerializer)))
+            {
+                _serviceCollection.AddSingleton<ITransportSerializer, MsgPackTransportSerializer>();
+            }                                               
+
+            if (!_serviceCollection.Any(s => s.ServiceType == typeof(LocalStage)))
+            {
+                _serviceCollection.AddSingleton<LocalStage>();
+            }
+
+            if (!_serviceCollection.Any(s => s.ServiceType == typeof(RemoteStageServer)))
+            {
+                _serviceCollection.AddSingleton<RemoteStageServer>();
+            }
+
+            if (!_serviceCollection.Any(s => s.ServiceType == typeof(RemoteStageClient)))
+            {
+                _serviceCollection.AddSingleton<RemoteStageClient>();
+            }
+
+            if (!_serviceCollection.Any(s => s.ServiceType == typeof(PubSubManager)))
+            {
+                _serviceCollection.AddSingleton<PubSubManager>();
+            }
+
+            _configuration = _configurationBuilder.Build();
+
+            _serviceCollection.Configure<NanoServiceOptions>(_configuration.GetSection("ServiceOptions"));
+            _serviceCollection.Configure<TcpOptions>(_configuration.GetSection("TcpOptions"));
+           
+
+        }
+
+        public void Configure()
+        {
+            ConfigureDefaults();
+
+            _serviceProvider = _serviceCollection.BuildServiceProvider();
+
+            _remoteClient  = _serviceProvider.GetRequiredService<RemoteStageClient>();
+
+            _stageDirectory = _serviceProvider.GetRequiredService<IStageDirectory>();
+
+            _configured = true;
+        }
+
+        public void Run()
+        {
+            _remoteServer = _serviceProvider.GetRequiredService<RemoteStageServer>();
+
+            _remoteServer.Run().Wait();
+
+        }
+
+        public async Task<Boolean> Connected()
+        {
+            var stages = await _stageDirectory.GetAllStages();
+
+           
+
+            foreach(var stage in stages)
+            {
+                var pingResult = await _remoteClient.PingStage(stage);
+
+                if (pingResult.HasValue)
+                    return true;
+            }
+            return false;
+
+        }
+
+        public ProxyFactory ProxyFactory
+        {
+
+            get
+            {
+
+                if (!_configured) Configure();
+
+                PubSubManager pubsub = _serviceProvider.GetRequiredService<PubSubManager>();
+
+                return new ProxyFactory(_serviceProvider, pubsub);
+
+            }
+        }
+
+        public int InboundBacklogCount()
+        {
+            return _remoteServer.MessageBacklog();
+        }
+
+    }
+}

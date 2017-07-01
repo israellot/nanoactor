@@ -18,11 +18,14 @@ namespace NanoActor
 
         public T Deserialize<T>(byte[] data)
         {
+            if (data == null)
+                return default(T);
+
             return MessagePackSerializer.Deserialize<T>(data,CustomCompositeResolver.Instance);
         }
 
         public byte[] Serialize(object o)
-        {
+        {                            
            return MessagePackSerializer.Serialize((dynamic)o, CustomCompositeResolver.Instance);
         }
     }

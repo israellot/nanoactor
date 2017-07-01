@@ -13,22 +13,21 @@ namespace NanoActor.Util
         /// <summary>Whether the current thread is processing work items.</summary>
         [ThreadStatic]
         private static bool _threadRunning;
-
-        private LinkedList<Task> _tasks;
-
+                
         private Thread _runningThread;
 
         ManualResetEvent _event = new ManualResetEvent(false);
 
-        
+        BlockingCollection<Task> _tasks;
 
         public SingleThreadTaskScheduler()
         {
-            _tasks = new LinkedList<Task>();
+            _tasks = new BlockingCollection<Task>();
 
             _runningThread = new Thread(() => { ThreadRun(); });
             _runningThread.IsBackground = true;
             _runningThread.Start();
+            
             
         }
 
@@ -37,30 +36,10 @@ namespace NanoActor.Util
             while (true)
             {
                 _threadRunning = false;
-
-                _event.WaitOne();
-
+                var task = _tasks.Take();
                 _threadRunning = true;
 
-                while (true)
-                {
-                    Task task;
-                    lock (_tasks)
-                    {
-                        if (_tasks.Count == 0)
-                        {
-                            _event.Reset();
-                            break;
-                        }
-                           
-
-                        task = _tasks.First.Value;
-                        _tasks.RemoveFirst();
-                    }
-
-                    TryExecuteTask(task);
-                }
-               
+                TryExecuteTask(task);
             }
         }
 
@@ -76,13 +55,9 @@ namespace NanoActor.Util
 
         protected override void QueueTask(Task task)
         {
-            // Add the task to the list of tasks to be processed.  If there aren't enough
-            // delegates currently queued or running to process tasks, schedule another.
-            lock (_tasks)
-            {
-                _tasks.AddLast(task);
-                _event.Set();
-            }
+
+            _tasks.Add(task);
+            
 
         }
 
@@ -91,7 +66,7 @@ namespace NanoActor.Util
         /// <returns>Whether the task could be found and removed.</returns>
         protected sealed override bool TryDequeue(Task task)
         {
-            lock (_tasks) return _tasks.Remove(task);
+            return false;
         }
 
         protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
