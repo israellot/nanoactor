@@ -116,6 +116,8 @@ namespace NanoActor
 
             var updated = await _scripts.HashUpdateIfEqual("actor-directory", key, oldStageId, stageId);
 
+            await Refresh(actorTypeName, actorId);
+
             if (updated)
                 return stageId;
             else

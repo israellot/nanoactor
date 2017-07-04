@@ -10,7 +10,7 @@ namespace NanoActor
     {
         String Id { get; set; }
 
-        Task<object> Post(ActorRequest message, TimeSpan? timeout = null, CancellationToken? ct = null);
+        Task<object> Post(ITransportSerializer serializer,ActorRequest message, TimeSpan? timeout = null, CancellationToken? ct = null);
 
         
     }

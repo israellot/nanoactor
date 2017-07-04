@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace NanoActor.Telemetry
 {
-    public abstract class StopwatchTracker
+    public abstract class StopwatchTracker:IDisposable
     {
         private Stopwatch sw;
         private DateTimeOffset startTimestamp;
@@ -18,17 +18,21 @@ namespace NanoActor.Telemetry
 
 
         }
-
-
-        protected void Start()
+        
+        public StopwatchTracker Start()
         {
             startTimestamp = DateTimeOffset.Now;
             sw = Stopwatch.StartNew();
+
+            return this;
         }
 
-        protected void End()
+        public void End(bool success=true)
         {
             sw.Stop();
+            Sink(startTimestamp, sw.Elapsed, success);
+
+            
         }
 
         protected abstract void Sink(DateTimeOffset startTimestamp, TimeSpan elapsed, bool success);
@@ -41,14 +45,14 @@ namespace NanoActor.Telemetry
             {
                 action.Invoke();
 
-                End();
-                Sink(startTimestamp, sw.Elapsed, true);
+                End(true);
+               
             }
             catch
             {
                 try
                 {
-                    Sink(startTimestamp, sw.Elapsed, false);
+                    End(false);
                 }
                 catch { }
 
@@ -64,15 +68,15 @@ namespace NanoActor.Telemetry
             {
                 var result = action.Invoke();
 
-                End();
-                Sink(startTimestamp, sw.Elapsed, true);
+                End(true);
+                
                 return result;
             }
             catch
             {
                 try
                 {
-                    Sink(startTimestamp, sw.Elapsed, false);
+                    End(false);
                 }
                 catch { }
 
@@ -88,15 +92,15 @@ namespace NanoActor.Telemetry
             {
                 await action.Invoke();
 
-                End();
-                Sink(startTimestamp, sw.Elapsed, true);
+                End(true);
+               
 
             }
             catch
             {
                 try
                 {
-                    Sink(startTimestamp, sw.Elapsed, false);
+                    End(false);
                 }
                 catch { }
 
@@ -113,15 +117,15 @@ namespace NanoActor.Telemetry
             {
                 var result = await action.Invoke();
 
-                End();
-                Sink(startTimestamp, sw.Elapsed, true);
+                End(true);
+               
                 return result;
             }
             catch
             {
                 try
                 {
-                    Sink(startTimestamp, sw.Elapsed, false);
+                    End(false);
                 }
                 catch { }
 
@@ -130,5 +134,9 @@ namespace NanoActor.Telemetry
 
         }
 
+        public void Dispose()
+        {
+            this.End(true);           
+        }
     }
 }

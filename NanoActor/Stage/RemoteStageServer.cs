@@ -279,7 +279,7 @@ namespace NanoActor
                             var newStageId = await _actorDirectory.Reallocate(message.ActorInterface, message.ActorId, queryResult.StageId);
 
                             //try again
-                            ReceivedActorRequest(message, sourceAddress);
+                            await ReceivedActorRequest(message, sourceAddress);
                         }
                         
                     }                    

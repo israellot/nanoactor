@@ -148,19 +148,18 @@ namespace NanoActor.Telemetry
                     if (prevAggregator != null && prevAggregator.Count > 0)
                     {
                         
-                        if (aggPeriod.TotalMilliseconds < 1)
+                        if (aggPeriod.TotalMilliseconds >0)
                         {
-                            aggPeriod = TimeSpan.FromMilliseconds(1);
-                        }
+                            foreach (var sink in _sinks)
+                            {
+                                sink.TrackMeter(
+                                   Name,
+                                   prevAggregator.Count,
+                                   aggPeriod,
+                                   prevAggregator.StartTimestamp
+                                   );
+                            }
 
-                        foreach(var sink in _sinks)
-                        {
-                            sink.TrackMeter(
-                               Name,
-                               prevAggregator.Count,
-                               aggPeriod,
-                               prevAggregator.StartTimestamp
-                               );
                         }
 
                         // Wait for end end of the aggregation period:

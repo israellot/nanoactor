@@ -7,9 +7,16 @@ using System.Linq;
 
 namespace NanoActor.Telemetry
 {
-    
 
-    public class LoggerTelemetrySink : ITelemetrySink
+    public class LoggerTelemetrySink<T> : LoggerTelemetrySink,ITelemetrySink<T>
+    {
+        public LoggerTelemetrySink(ILogger<T> logger) : base(logger)
+        {
+            
+        }
+    }
+
+    public class LoggerTelemetrySink: ITelemetrySink
     {
 
         ILogger _logger;

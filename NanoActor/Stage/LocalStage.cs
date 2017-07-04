@@ -52,6 +52,8 @@ namespace NanoActor
 
         ITelemetry _telemetry;
 
+        ITransportSerializer _serializer;
+
         MeterTracker _reqSecondMeter;
 
         PubSubManager _pubsub;
@@ -60,7 +62,7 @@ namespace NanoActor
 
         public Boolean Enabled { get; set; } = false;
 
-        public LocalStage(IServiceProvider services, IActorDirectory actorDirectory, IStageDirectory stageDirectory,ILogger<LocalStage> logger, PubSubManager pubsub) {
+        public LocalStage(IServiceProvider services,ITransportSerializer serializer, ITelemetry<LocalStage> telemetry, IActorDirectory actorDirectory, IStageDirectory stageDirectory,ILogger<LocalStage> logger, PubSubManager pubsub) {
             _services = services;
 
             _actorDirectory = actorDirectory;
@@ -69,11 +71,13 @@ namespace NanoActor
 
             _pubsub = pubsub;
 
+            _serializer = serializer;
+
             StageGuid = Guid.NewGuid().ToString();
 
             _logger = logger;
 
-            _telemetry = new Telemetry.Telemetry(new[] { new LoggerTelemetrySink(_logger) });
+            _telemetry = telemetry;
 
             _reqSecondMeter = _telemetry.Meter("Stage.Requests", TimeSpan.FromSeconds(10));
         }
@@ -245,7 +249,16 @@ namespace NanoActor
                         await _actorDirectory.RegisterActor(actorTypeName, actorId, StageGuid);
 
                         //try a registered service
-                        var actor = _services.GetRequiredService(actorType);
+                        Object actor = null;
+                        try
+                        {
+                            actor = _services.GetRequiredService(actorType);
+                        }
+                        catch (Exception ex)
+                        {
+
+                        }
+                        
 
                         actorInstance = new LocalActorInstance()
                         {
@@ -260,7 +273,7 @@ namespace NanoActor
                         {
                             actorInstance.Instance.Id = actorId;
                             actorInstance.Instance.Configure(actorTypeName, _pubsub);
-                            actorInstance.Instance.Run();
+                            await actorInstance.Instance.Run();
                         }
 
                         _logger.LogDebug("Activated instance for {0}. Actor Id : {1}", actorTypeName, actorId);
@@ -283,33 +296,45 @@ namespace NanoActor
             var actorInstance = await ActivateInstance(message.ActorInterface, message.ActorId);
 
             actorInstance.LastAccess = DateTimeOffset.UtcNow;
+            try
+            {
+                var result = await actorInstance.Instance.Post(_serializer, message, timeout);
 
-            var result =  await actorInstance.Instance.Post(message, timeout);
+                if (result is Exception)
+                {
+                    var response = new ActorResponse()
+                    {
+                        Success = false,
+                        Exception = (Exception)result,
+                        Id = message.Id
+                    };
 
-            if (result is Exception)
+                    return response;
+                }
+                else
+                {
+                    var response = new ActorResponse()
+                    {
+                        Success = true,
+                        Response = _serializer.Serialize(result),
+                        Id = message.Id
+                    };
+
+                    return response;
+                }
+            }
+            catch(Exception ex)
             {
                 var response = new ActorResponse()
                 {
                     Success = false,
-                    Exception = (Exception)result,
+                    Exception = (Exception)ex,
                     Id = message.Id
                 };
 
                 return response;
             }
-            else
-            {
-                var response = new ActorResponse()
-                {
-                    Success = true,
-                    Response = result,
-                    Id = message.Id
-                };
-
-                return response;
-            }
-
-          
+                               
         }
 
         public Task WaitInstanceIdle(string actorTypeName, String actorId)

@@ -12,6 +12,7 @@ using NanoActor.Socket.Redis;
 using NanoActor.PubSub;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using NanoActor.Telemetry;
 
 namespace NanoActor.ClusterInstance
 {
@@ -36,6 +37,10 @@ namespace NanoActor.ClusterInstance
 
         IStageDirectory _stageDirectory;
 
+        ITransportSerializer _serializer;
+
+        ITelemetry _telemetry;
+
         public BaseStage()
         {
             _serviceCollection = new ServiceCollection();
@@ -50,7 +55,7 @@ namespace NanoActor.ClusterInstance
 
             //_loggerFactory = _serviceCollection.BuildServiceProvider().GetRequiredService<ILoggerFactory>();
 
-            var gc = System.Runtime.GCSettings.IsServerGC;
+            
         }
 
        
@@ -99,6 +104,35 @@ namespace NanoActor.ClusterInstance
                 _serviceCollection.AddSingleton<PubSubManager>();
             }
 
+            if (!_serviceCollection.Any(s => s.ServiceType == typeof(ProxyFactory)))
+            {
+                _serviceCollection.AddSingleton<ProxyFactory>();
+            }
+
+
+            _serviceCollection.AddTransient<ITelemetrySink, NullTelemetrySink>();
+            _serviceCollection.AddTransient<ITelemetrySink, LoggerTelemetrySink>(s=> {
+                var logger = _loggerFactory.CreateLogger("global");
+                return new LoggerTelemetrySink(logger);
+            });
+
+            _serviceCollection.AddTransient<ITelemetrySink[]>(s => {
+                var sinks = s.GetServices<ITelemetrySink>();
+
+                return sinks.ToArray();
+            });
+            _serviceCollection.AddTransient(typeof(LoggerTelemetrySink<>));
+                        
+            if (!_serviceCollection.Any(s => s.ServiceType == typeof(ITelemetry)))
+            {
+                _serviceCollection.AddSingleton<ITelemetry,Telemetry.Telemetry>();
+            }
+
+            if (!_serviceCollection.Any(s => s.ServiceType == typeof(ITelemetry<>)))
+            {
+                _serviceCollection.AddSingleton(typeof(ITelemetry<>), typeof(Telemetry<>));
+            }
+
             _configuration = _configurationBuilder.Build();
 
             _serviceCollection.Configure<NanoServiceOptions>(_configuration.GetSection("ServiceOptions"));
@@ -116,6 +150,10 @@ namespace NanoActor.ClusterInstance
             _remoteClient  = _serviceProvider.GetRequiredService<RemoteStageClient>();
 
             _stageDirectory = _serviceProvider.GetRequiredService<IStageDirectory>();
+
+            _serializer = _serviceProvider.GetRequiredService<ITransportSerializer>();
+
+            _telemetry = _serviceProvider.GetRequiredService<ITelemetry>();
 
             _configured = true;
         }
@@ -153,9 +191,9 @@ namespace NanoActor.ClusterInstance
 
                 if (!_configured) Configure();
 
-                PubSubManager pubsub = _serviceProvider.GetRequiredService<PubSubManager>();
+                var factory = _serviceProvider.GetRequiredService<ProxyFactory>();
 
-                return new ProxyFactory(_serviceProvider, pubsub);
+                return factory;
 
             }
         }

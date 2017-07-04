@@ -83,7 +83,7 @@ namespace NanoActor
                 stageAddress = _serializer.Deserialize<StageAddress>(address);
 
                 if(stageAddress != null)
-                    _memoryCache.Set(stageId, stageAddress,TimeSpan.FromSeconds(5));
+                    _memoryCache.Set(stageId, stageAddress,TimeSpan.FromSeconds(4));
             }
             else
             {
@@ -122,7 +122,7 @@ namespace NanoActor
 
                 stages= stagesValues.Select(s => (string)s).ToList();
 
-                _memoryCache.Set("all", stages,TimeSpan.FromSeconds(5));
+                _memoryCache.Set("all", stages,TimeSpan.FromSeconds(4));
 
                 return stages;
             }

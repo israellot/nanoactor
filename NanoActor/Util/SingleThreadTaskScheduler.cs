@@ -10,9 +10,8 @@ namespace NanoActor.Util
 {
     public class SingleThreadTaskScheduler : TaskScheduler,IDisposable
     {
-        /// <summary>Whether the current thread is processing work items.</summary>
-        [ThreadStatic]
-        private static bool _threadRunning;
+        /// <summary>Whether the current thread is processing work items.</summary>        
+        private bool _threadRunning;
                 
         private Thread _runningThread;
 
@@ -59,6 +58,18 @@ namespace NanoActor.Util
             _tasks.Add(task);
             
 
+        }
+
+        //TODO find a better way for it
+        public async Task<Boolean> WaitIdle()
+        {
+            while (true)
+            {
+                if (!_threadRunning)
+                    return true;
+
+                await Task.Delay(50);
+            }
         }
 
         /// <summary>Attempts to remove a previously scheduled task from the scheduler.</summary>

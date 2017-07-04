@@ -4,6 +4,8 @@ using System.Text;
 
 namespace NanoActor.Telemetry
 {
+    public interface ITelemetry<T> : ITelemetry { }
+
     public interface ITelemetry
     {
         DependencyTracker Dependency(String dependencyName, string commandName);

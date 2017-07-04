@@ -27,7 +27,7 @@ namespace NanoActor
         public String ActorMethodName { get; set; }
 
         [MessagePack.Key(5)]
-        public object[] Arguments { get; set; }
+        public List<byte[]> Arguments { get; set; }
 
         [MessagePack.Key(6)]
         public Boolean FromClient { get; set; }

@@ -24,7 +24,7 @@ namespace NanoActor
         public Exception Exception { get; set; }
 
         [MessagePack.Key(4)]
-        public object Response { get; set; }
+        public byte[] Response { get; set; }
     }
 
     

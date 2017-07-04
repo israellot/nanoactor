@@ -22,11 +22,21 @@ namespace NanoActor
                 return default(T);
 
             return MessagePackSerializer.Deserialize<T>(data,CustomCompositeResolver.Instance);
+
+            
         }
 
         public byte[] Serialize(object o)
-        {                            
-           return MessagePackSerializer.Serialize((dynamic)o, CustomCompositeResolver.Instance);
+        {
+            try
+            {
+                return MessagePackSerializer.Serialize((dynamic)o, CustomCompositeResolver.Instance);
+            }
+            catch(Exception ex)
+            {
+                return null;
+            }
+         
         }
     }
 
@@ -50,9 +60,13 @@ namespace NanoActor
             
             // final fallback(last priority)
             MessagePack.Resolvers.DynamicContractlessObjectResolver.Instance,
-            
+
+            //ContractlessStandardResolver.Instance,
+
             // finaly use standard resolver
-            StandardResolver.Instance
+            StandardResolver.Instance,
+
+           
         };
 
         CustomCompositeResolver()

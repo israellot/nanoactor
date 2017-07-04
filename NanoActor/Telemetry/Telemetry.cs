@@ -1,6 +1,8 @@
-﻿using System;
+﻿using MoreLinq;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace NanoActor.Telemetry
@@ -12,10 +14,10 @@ namespace NanoActor.Telemetry
 
         static ConcurrentDictionary<string, MeterTracker> meterDictionary = new ConcurrentDictionary<string, MeterTracker>();
 
-        ITelemetrySink[] _sinks;
+        protected ITelemetrySink[] _sinks;
         public Telemetry(ITelemetrySink[] sinks)
         {
-            this._sinks = sinks;
+            _sinks = sinks;
         }
 
         public DependencyTracker Dependency(String dependencyName, string commandName)
@@ -35,5 +37,18 @@ namespace NanoActor.Telemetry
             return meterDictionary.GetOrAdd(meterName, new MeterTracker(_sinks, meterName, aggregationPeriod));
         }
 
+    }
+
+    public class Telemetry<T> : Telemetry,ITelemetry<T>
+    {
+        public Telemetry(LoggerTelemetrySink<T> logger, ITelemetrySink[] sinks) : base(sinks.Concat(new[] { logger }).ToArray())
+        {
+            if (_sinks != null)
+            {
+                _sinks = _sinks.Where(s => s.GetType() != typeof(LoggerTelemetrySink)).ToArray();
+            }
+          
+
+        }
     }
 }

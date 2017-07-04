@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Threading;
 using NanoActor.Util;
 using NanoActor.PubSub;
+using NanoActor.ActorProxy;
 
 namespace NanoActor
 {
@@ -25,7 +26,7 @@ namespace NanoActor
     
     public abstract class Actor:IActor,IDisposable
     {
-        
+
         OrderedTaskScheduler _taskScheduler;
 
         PubSubManager _pubsub;
@@ -33,15 +34,43 @@ namespace NanoActor
         protected static readonly Dictionary<string, MethodInfo> _methodCache = new Dictionary<string, MethodInfo>();
         protected static readonly Dictionary<string, PropertyInfo> _returnPropertyCache = new Dictionary<string, PropertyInfo>();
 
+        CancellationTokenSource _timersCts = new CancellationTokenSource();
+
+        List<ActorTimer> _timers = new List<ActorTimer>();
+
         public String Id { get; set; }
+
+        protected ProxyFactory ProxyFactory;
 
         String _activatorInterface;
 
-        public Actor()
-        {            
-            
-            
+        
+
+        public Actor(ProxyFactory proxyFactory)
+        {
+            this.ProxyFactory = proxyFactory;
         }
+
+        protected ActorTimer RegisterTimer(Func<Task> callback,TimeSpan interval,int? runCount=null,Boolean autoStart=true)
+        {
+            var timer = new ActorTimer(callback, interval, runCount, _timersCts.Token);
+            _timers.Add(timer);
+
+            if (autoStart) timer.Start();
+
+            return timer;
+
+        }
+
+        protected void CancelTimer(ActorTimer timer)
+        {
+            _timers.Remove(timer);
+            timer.Stop();
+        }
+
+        protected abstract Task OnAcvitate();
+
+        protected abstract Task SaveState();
 
         internal void Configure(string activatorInterface, PubSubManager pubsub)
         {
@@ -49,30 +78,55 @@ namespace NanoActor
             _pubsub = pubsub;
         }
 
-        internal void Run()
+        internal async Task Run()
         {
             _taskScheduler = new OrderedTaskScheduler();
+
+            try
+            {
+                await this.OnAcvitate();
+            }
+            catch(Exception ex)
+            {
+
+            }
+            
         }
 
-        public async Task<object> Post(ActorRequest message,TimeSpan? timeout=null,CancellationToken? ct=null)
+        public async Task<object> Post(ITransportSerializer serializer,ActorRequest message,TimeSpan? timeout=null,CancellationToken? ct=null)
         {
             if (_taskScheduler == null)
                 return null;
 
             try
             {
-                
-                var taskResult = await Task.Factory.StartNew(async () => {
-                    
+
+                var taskResult = await Task.Factory.StartNew(async () =>
+                {
+
                     if (!_methodCache.TryGetValue(message.ActorMethodName, out var method))
                     {
                         method = this.GetType().GetMethod(message.ActorMethodName);
 
                         _methodCache[message.ActorMethodName] = method;
                     }
+                    var parameters = method.GetParameters();
 
-                    var workTask = (Task)method.Invoke(this, message.Arguments);
+                    List <object> arguments = new List<object>();
+                    for (var i = 0; i < message.Arguments.Count; i++)
+                    {
+                        var parameterInfo = parameters[i];
+
+                        var deserilizeMethodInfo = serializer.GetType().GetMethod("Deserialize").MakeGenericMethod(parameterInfo.ParameterType);
+
+                        var argument = deserilizeMethodInfo.Invoke(serializer, new[] { message.Arguments[i] });
+
+                        arguments.Add(argument);
+                    }
+
+                    Task workTask = (Task)method.Invoke(this, arguments.ToArray());
                     await workTask;
+
 
                     if (!_returnPropertyCache.TryGetValue(message.ActorMethodName, out var resultProperty))
                     {
@@ -85,7 +139,7 @@ namespace NanoActor
                         {
                             _returnPropertyCache[message.ActorMethodName] = null;
                         }
-                       
+
                     }
 
                     if (resultProperty != null)
@@ -97,7 +151,7 @@ namespace NanoActor
 
                     return null;
 
-                }, ct??CancellationToken.None,TaskCreationOptions.None,_taskScheduler);
+                }, ct ?? CancellationToken.None, TaskCreationOptions.None, _taskScheduler).ConfigureAwait(true);
 
 
                 return taskResult.Result;
@@ -111,7 +165,7 @@ namespace NanoActor
            
         }
 
-        public Task WaitIdle()
+        internal Task WaitIdle()
         {
             return _taskScheduler.WaitIdle();
         }
@@ -123,7 +177,12 @@ namespace NanoActor
 
         public void Dispose()
         {
-           
+            foreach(var t in _timers)
+            {
+                t.Stop();
+            }
+
+            SaveState().Wait();
         }
     }
 }

@@ -4,6 +4,8 @@ using System.Text;
 
 namespace NanoActor.Telemetry
 {
+
+    public interface ITelemetrySink<T>: ITelemetrySink { }
     public interface ITelemetrySink
     {
 
