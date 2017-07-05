@@ -214,9 +214,7 @@ namespace NanoActor
 
         public async Task<LocalActorInstance> ActivateInstance(string actorTypeName,String actorId)
         {
-            
-
-
+                        
             var actorInstanceKey = string.Join(",", actorTypeName, actorId);
 
             if (_actorInstances.TryGetValue(actorInstanceKey, out var actorInstance))
@@ -250,15 +248,9 @@ namespace NanoActor
 
                         //try a registered service
                         Object actor = null;
-                        try
-                        {
-                            actor = _services.GetRequiredService(actorType);
-                        }
-                        catch (Exception ex)
-                        {
 
-                        }
-                        
+                        actor = _services.GetRequiredService(actorType);
+
 
                         actorInstance = new LocalActorInstance()
                         {

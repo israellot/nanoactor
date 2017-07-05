@@ -82,7 +82,6 @@ namespace NanoActor.PubSub
         }
 
        
-
         public async Task Cancel(string subscriptionId)
         {
             if(_subscriptions.TryRemove(subscriptionId, out var subscription))

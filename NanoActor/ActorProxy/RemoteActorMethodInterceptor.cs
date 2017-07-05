@@ -76,7 +76,7 @@ namespace NanoActor.ActorProxy
                     }
 
                     var result = t.Result;
-                    if (!result.Success)
+                    if (result!=null && !result.Success)
                     {
                         tracker.End(false);
                         if (result.Exception != null)
@@ -141,6 +141,8 @@ namespace NanoActor.ActorProxy
                                 throw result.Exception;
                         }
 
+                        tracker.End(true);
+
                         var key = string.Join(".", invocation.Method.DeclaringType.Namespace, invocation.Method.DeclaringType.Name, invocation.Method.Name);
 
                         if (!_deserializerAccessors.TryGetValue(key, out var method))
@@ -156,7 +158,7 @@ namespace NanoActor.ActorProxy
                                                 
                         var obj = method.Invoke(result.Response);
 
-                        tracker.End(true);
+                        
 
                         return (TResult)(obj);
                     }

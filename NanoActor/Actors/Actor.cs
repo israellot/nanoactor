@@ -175,6 +175,11 @@ namespace NanoActor
             await _pubsub.Publish(_activatorInterface,eventName,Id,data);
         }
 
+        protected async Task PublishFor(string actorId,string eventName, object data)
+        {
+            await _pubsub.Publish(_activatorInterface, eventName, actorId, data);
+        }
+
         public void Dispose()
         {
             foreach(var t in _timers)
