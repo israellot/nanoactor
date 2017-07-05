@@ -95,8 +95,8 @@ namespace DebugHelper
 
             clientStage.Configure((c, log,options) => {
                 options.AddJsonFile("appsettings.json");
-                log.AddConsole();
-                log.AddDebug(LogLevel.Debug);
+                //log.AddConsole();
+                //log.AddDebug(LogLevel.Debug);
             });
 
             

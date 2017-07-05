@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
+using NanoActor.ActorProxy;
 
 namespace NanoActor.Test.Actors
 {
@@ -23,6 +24,11 @@ namespace NanoActor.Test.Actors
 
     public class TestActor : Actor, ITestActor
     {
+        public TestActor(ProxyFactory proxyFactory) : base(proxyFactory)
+        {
+
+        }
+
         public Task<string> Hello(string hello)
         {
             return Task.FromResult(hello + " World " + this.Id);
@@ -41,6 +47,16 @@ namespace NanoActor.Test.Actors
         public async Task Throw()
         {
             throw new Exception("");
+        }
+
+        protected override async Task OnAcvitate()
+        {
+            
+        }
+
+        protected override Task SaveState()
+        {
+            throw new NotImplementedException();
         }
     }
 }

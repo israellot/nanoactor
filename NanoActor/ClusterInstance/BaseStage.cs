@@ -162,7 +162,8 @@ namespace NanoActor.ClusterInstance
         {
             _remoteServer = _serviceProvider.GetRequiredService<RemoteStageServer>();
 
-            _remoteServer.Run();
+            Task.Factory.StartNew(_remoteServer.Run);
+            
 
         }
 

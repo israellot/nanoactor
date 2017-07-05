@@ -74,11 +74,12 @@ namespace NanoActor
 
             _ownAddress = await _stageDirectory.RegisterStage(_localStage.StageGuid, address);
 
-
             MonitorOtherStages();
 
             SelfMonitor();
+
         }
+
 
         public void ProcessServerInput()
         {
