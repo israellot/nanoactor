@@ -4,39 +4,79 @@ using System.Text;
 using MessagePack;
 using MessagePack.Formatters;
 using MessagePack.Resolvers;
+using System.Reflection;
+using System.Linq;
 
 namespace NanoActor
 {
     public class MsgPackTransportSerializer : ITransportSerializer
     {
 
+        MethodInfo _genericSerializer;
+        MethodInfo _genericDeserializer;
+
         public MsgPackTransportSerializer()
         {
-                      
-       
+
+            _genericSerializer= typeof(MsgPackTransportSerializer)
+              .GetMethods()
+              .Single(m => m.Name == "Serialize" && m.IsGenericMethodDefinition);
+
+            _genericDeserializer = typeof(MsgPackTransportSerializer)
+              .GetMethods()
+              .Single(m => m.Name == "Deserialize" && m.IsGenericMethodDefinition);
         }
 
         public T Deserialize<T>(byte[] data)
         {
             if (data == null)
                 return default(T);
-
-            return MessagePackSerializer.Deserialize<T>(data,CustomCompositeResolver.Instance);
-
+            try
+            {
+                return MessagePackSerializer.Deserialize<T>(data, CustomCompositeResolver.Instance);
+            }
+            catch(Exception ex)
+            {
+                return default(T);
+            }
             
         }
 
-        public byte[] Serialize(object o)
+        public object Deserialize(Type type,byte[] data)
+        {
+            var methodInfo = _genericDeserializer.MakeGenericMethod(type);
+
+            var obj = methodInfo.Invoke(this, new[] { data });
+
+            return obj;
+
+        }
+
+        public byte[] Serialize<T>(T o)
         {
             try
             {
-                return MessagePackSerializer.Serialize((dynamic)o, CustomCompositeResolver.Instance);
+                return MessagePackSerializer.Serialize(o, CustomCompositeResolver.Instance);
+
+                
             }
             catch(Exception ex)
             {
                 return null;
             }
          
+        }
+
+        public byte[] Serialize(object o)
+        {
+            if (o == null)
+                return MessagePackSerializer.Serialize<Object>(null);
+
+            var methodInfo = _genericSerializer.MakeGenericMethod(o.GetType());
+
+            var data = (Byte[])methodInfo.Invoke(this, new[] { o });
+
+            return data;
         }
     }
 
@@ -61,7 +101,7 @@ namespace NanoActor
             // final fallback(last priority)
             MessagePack.Resolvers.DynamicContractlessObjectResolver.Instance,
 
-            //ContractlessStandardResolver.Instance,
+            ContractlessStandardResolver.Instance,
 
             // finaly use standard resolver
             StandardResolver.Instance,

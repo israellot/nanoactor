@@ -53,7 +53,7 @@ namespace NanoActor.PubSub
                 EventName = eventName
             };
 
-            return _pubsub.Publish(ActorEventChannel(e.ActorInterface,e.EventName,e.ActorId), _serializer.Serialize(e.EventData));
+            return _pubsub.Publish(ActorEventChannel(e.ActorInterface,e.EventName,e.ActorId), _serializer.Serialize<T>(data));
         }
 
         public async Task<string> Watch<T>(string actorInterface,string eventName,string actorId,Action<ActorEvent<T>> handler)

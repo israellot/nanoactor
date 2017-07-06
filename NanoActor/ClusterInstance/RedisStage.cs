@@ -14,20 +14,33 @@ using NanoActor.Redis;
 
 namespace NanoActor.ClusterInstance
 {
+    public class RedisStageOptions
+    {
+        public String RedisConnectionString { get; set; }
+
+        public int RedisDatabase { get; set; }
+
+       
+    }
+
     public class RedisStage:BaseStage
     {
 
-       
+        RedisStageOptions _options;
 
-        public RedisStage():base()
+        public RedisStage(RedisStageOptions options=null) :base()
         {
-          
+            this._options = options ?? new RedisStageOptions()
+            {
+                RedisConnectionString = "localhost",
+                RedisDatabase = 0
+            };
 
         }
 
-        
 
-        public override  void ConfigureDefaults()
+
+        public override void ConfigureDefaults()
         {
 
 
@@ -64,10 +77,15 @@ namespace NanoActor.ClusterInstance
                 _serviceCollection.AddSingleton<RedisConnectionFactory>();
             }
 
-            _serviceCollection.Configure<RedisOptions>(_configuration.GetSection("Redis"));
-            _serviceCollection.Configure<RedisSocketOptions>(_configuration.GetSection("Redis"));
-         
 
+            
+            _serviceCollection.Configure<RedisOptions>((o) =>
+                    {
+                        o.ConnectionString = _options.RedisConnectionString;
+                        o.Database = _options.RedisDatabase;
+                    }
+            );
+            
             
 
         }

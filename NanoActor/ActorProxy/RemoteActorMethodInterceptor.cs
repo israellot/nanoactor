@@ -25,6 +25,7 @@ namespace NanoActor.ActorProxy
 
         protected static ConcurrentDictionary<string, Func<byte[],object>> _deserializerAccessors = new ConcurrentDictionary<string, Func<byte[], object>>();
 
+
         public RemoteActorMethodInterceptor(RemoteStageClient remoteClient, ITelemetry telemetry, ITransportSerializer serializer,TimeSpan? timeout=null, Boolean fireAndForget=false)
         {
             _remoteClient = remoteClient;
@@ -46,7 +47,10 @@ namespace NanoActor.ActorProxy
 
             List<byte[]> arguments = new List<byte[]>();
             foreach (var argument in invocation.Arguments)
+            {
                 arguments.Add(_serializer.Serialize(argument));
+            }
+               
 
             var message = new ActorRequest()
             {
@@ -105,10 +109,15 @@ namespace NanoActor.ActorProxy
 
             var actor = (IActor)invocation.Proxy;
 
+
             List<byte[]> arguments = new List<byte[]>();
-            foreach(var argument in invocation.Arguments)
+            foreach (var argument in invocation.Arguments)
+            {
                 arguments.Add(_serializer.Serialize(argument));
-            
+            }
+
+
+
 
             var message = new ActorRequest()
             {
@@ -143,20 +152,10 @@ namespace NanoActor.ActorProxy
 
                         tracker.End(true);
 
-                        var key = string.Join(".", invocation.Method.DeclaringType.Namespace, invocation.Method.DeclaringType.Name, invocation.Method.Name);
 
-                        if (!_deserializerAccessors.TryGetValue(key, out var method))
-                        {
-                            var returnType = invocation.Method.ReturnType.GetGenericArguments()[0];
+                        var returnType = invocation.Method.ReturnType.GetGenericArguments()[0];
 
-                            var methodInfo = _serializer.GetType().GetMethod("Deserialize").MakeGenericMethod(returnType);
-
-                            method = (x) => methodInfo.Invoke(_serializer, new[] { x });
-
-                            _deserializerAccessors.TryAdd(key, method);
-                        }
-                                                
-                        var obj = method.Invoke(result.Response);
+                        var obj = _serializer.Deserialize(returnType,result.Response);
 
                         
 

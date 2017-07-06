@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.DependencyInjection;
 using System.Threading.Tasks;
 using System.Reflection;
 using System.Threading;
@@ -44,11 +45,12 @@ namespace NanoActor
 
         String _activatorInterface;
 
-        
+        IServiceProvider _serviceProvider;
 
-        public Actor(ProxyFactory proxyFactory)
+
+        public Actor(IServiceProvider _serviceProvider)
         {
-            this.ProxyFactory = proxyFactory;
+            this._serviceProvider = _serviceProvider;
         }
 
         protected ActorTimer RegisterTimer(Func<Task> callback,TimeSpan interval,int? runCount=null,Boolean autoStart=true)
@@ -74,6 +76,8 @@ namespace NanoActor
 
         internal void Configure(string activatorInterface, PubSubManager pubsub)
         {
+            ProxyFactory = _serviceProvider.GetRequiredService<ProxyFactory>();
+
             _activatorInterface = activatorInterface;
             _pubsub = pubsub;
         }
@@ -82,15 +86,8 @@ namespace NanoActor
         {
             _taskScheduler = new OrderedTaskScheduler();
 
-            try
-            {
-                await this.OnAcvitate();
-            }
-            catch(Exception ex)
-            {
+            await this.OnAcvitate();
 
-            }
-            
         }
 
         public async Task<object> Post(ITransportSerializer serializer,ActorRequest message,TimeSpan? timeout=null,CancellationToken? ct=null)
@@ -115,13 +112,8 @@ namespace NanoActor
                     List <object> arguments = new List<object>();
                     for (var i = 0; i < message.Arguments.Count; i++)
                     {
-                        var parameterInfo = parameters[i];
-
-                        var deserilizeMethodInfo = serializer.GetType().GetMethod("Deserialize").MakeGenericMethod(parameterInfo.ParameterType);
-
-                        var argument = deserilizeMethodInfo.Invoke(serializer, new[] { message.Arguments[i] });
-
-                        arguments.Add(argument);
+                        var parameterInfo = parameters[i];                                             
+                        arguments.Add(serializer.Deserialize(parameterInfo.ParameterType, message.Arguments[i]));
                     }
 
                     Task workTask = (Task)method.Invoke(this, arguments.ToArray());
@@ -159,7 +151,10 @@ namespace NanoActor
             }
             catch (Exception ex)
             {
-                return ex;
+                if (ex.InnerException != null)
+                    return ex.InnerException;
+                else
+                    return ex;
             }
 
            
@@ -170,14 +165,14 @@ namespace NanoActor
             return _taskScheduler.WaitIdle();
         }
 
-        protected async Task Publish(string eventName, object data)
+        protected async Task Publish<T>(string eventName, T data)
         {            
-            await _pubsub.Publish(_activatorInterface,eventName,Id,data);
+            await _pubsub.Publish<T>(_activatorInterface,eventName,Id,data);
         }
 
-        protected async Task PublishFor(string actorId,string eventName, object data)
+        protected async Task PublishFor<T>(string actorId,string eventName, T data)
         {
-            await _pubsub.Publish(_activatorInterface, eventName, actorId, data);
+            await _pubsub.Publish<T>(_activatorInterface, eventName, actorId, data);
         }
 
         public void Dispose()

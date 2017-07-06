@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NanoActor.Options;
+using NanoActor.Redis;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
@@ -19,7 +20,7 @@ namespace NanoActor.Socket.Redis
 
         NanoServiceOptions _serviceOptions;
 
-        RedisSocketOptions _redisOptions;
+        RedisOptions _redisOptions;
 
         ILogger _logger;
 
@@ -35,7 +36,7 @@ namespace NanoActor.Socket.Redis
 
         LocalStage _localStage;
 
-        public RedisSocketServer(IServiceProvider services, LocalStage localStage, ILogger<RedisSocketServer> logger,IOptions<NanoServiceOptions> serviceOptions, IOptions<RedisSocketOptions> redisOptions)
+        public RedisSocketServer(IServiceProvider services, LocalStage localStage, ILogger<RedisSocketServer> logger,IOptions<NanoServiceOptions> serviceOptions, IOptions<RedisOptions> redisOptions)
         {
             this._services = services;
             this._serviceOptions = serviceOptions.Value;

@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NanoActor.Options;
+using NanoActor.Redis;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
@@ -19,7 +20,7 @@ namespace NanoActor.Socket.Redis
 
         NanoServiceOptions _serviceOptions;
 
-        RedisSocketOptions _redisOptions;
+        RedisOptions _redisOptions;
 
         ISubscriber _subscriber => _multiplexer.GetSubscriber();
 
@@ -36,7 +37,7 @@ namespace NanoActor.Socket.Redis
 
         BufferBlock<SocketData> _inputBuffer = new BufferBlock<SocketData>();
 
-        public RedisSocketClient(IServiceProvider services,ILogger<RedisSocketClient> logger, IStageDirectory stageDirectory, IOptions<NanoServiceOptions> serviceOptions, IOptions<RedisSocketOptions> redisOptions)
+        public RedisSocketClient(IServiceProvider services,ILogger<RedisSocketClient> logger, IStageDirectory stageDirectory, IOptions<NanoServiceOptions> serviceOptions, IOptions<RedisOptions> redisOptions)
         {
             this._services = services;
             this._serviceOptions = serviceOptions.Value;

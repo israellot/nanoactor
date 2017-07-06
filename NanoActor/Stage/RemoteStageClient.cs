@@ -213,6 +213,9 @@ namespace NanoActor
         {
             var stageSocketAddress = await _stageDirectory.GetStageAddress(stageId);
 
+            if (stageSocketAddress == null)
+                return null;
+
             var message = new RemoteStageMessage()
             {               
                 IsPingRequest = true,
