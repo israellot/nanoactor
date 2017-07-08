@@ -32,6 +32,7 @@ namespace NanoActor.ActorProxy
             _fireAndForget = fireAndForget;
             _serializer = serializer;
             this._telemetry = telemetry;
+
 #if DEBUG
             _timeout = TimeSpan.FromMilliseconds(-1);
 #else
@@ -135,8 +136,11 @@ namespace NanoActor.ActorProxy
                 return _remoteClient.SendActorRequest(message, _timeout)
                 .ContinueWith(t =>
                 {
+                    
+
                     if (_fireAndForget)
                     {
+                        tracker.End(true);
                         return default(TResult);
                     }
                     else
@@ -156,7 +160,6 @@ namespace NanoActor.ActorProxy
                         var returnType = invocation.Method.ReturnType.GetGenericArguments()[0];
 
                         var obj = _serializer.Deserialize(returnType,result.Response);
-
                         
 
                         return (TResult)(obj);

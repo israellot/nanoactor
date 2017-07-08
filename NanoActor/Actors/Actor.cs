@@ -23,6 +23,8 @@ namespace NanoActor
 
         public T EventData { get; set; }
     }
+
+    
     
     
     public abstract class Actor:IActor,IDisposable
@@ -98,55 +100,61 @@ namespace NanoActor
             try
             {
 
-                var taskResult = await Task.Factory.StartNew(async () =>
+                var key = $"{this.GetType().Name}.{message.ActorMethodName}";
+
+                if (!_methodCache.TryGetValue(key, out var method))
                 {
+                    method = this.GetType().GetMethod(message.ActorMethodName);
 
-                    if (!_methodCache.TryGetValue(message.ActorMethodName, out var method))
-                    {
-                        method = this.GetType().GetMethod(message.ActorMethodName);
+                    _methodCache[key] = method;
+                }
+                var parameters = method.GetParameters();
 
-                        _methodCache[message.ActorMethodName] = method;
-                    }
-                    var parameters = method.GetParameters();
+                List<object> arguments = new List<object>();
+                for (var i = 0; i < message.Arguments.Count; i++)
+                {
+                    var parameterInfo = parameters[i];
+                    arguments.Add(serializer.Deserialize(parameterInfo.ParameterType, message.Arguments[i]));
+                }
 
-                    List <object> arguments = new List<object>();
-                    for (var i = 0; i < message.Arguments.Count; i++)
-                    {
-                        var parameterInfo = parameters[i];                                             
-                        arguments.Add(serializer.Deserialize(parameterInfo.ParameterType, message.Arguments[i]));
-                    }
+                var taskResult = await Task.Factory.StartNew(async () =>
+                {                                       
 
                     Task workTask = (Task)method.Invoke(this, arguments.ToArray());
                     await workTask;
 
-
-                    if (!_returnPropertyCache.TryGetValue(message.ActorMethodName, out var resultProperty))
-                    {
-                        if (method.ReturnType.IsConstructedGenericType)
-                        {
-                            resultProperty = workTask.GetType().GetProperty("Result");
-                            _returnPropertyCache[message.ActorMethodName] = resultProperty;
-                        }
-                        else
-                        {
-                            _returnPropertyCache[message.ActorMethodName] = null;
-                        }
-
-                    }
-
-                    if (resultProperty != null)
-                    {
-                        var result = resultProperty.GetValue(workTask);
-
-                        return result;
-                    }
-
-                    return null;
+                    return workTask;                    
 
                 }, ct ?? CancellationToken.None, TaskCreationOptions.None, _taskScheduler).ConfigureAwait(true);
 
 
-                return taskResult.Result;
+                var doneTask = taskResult.Result;
+                if (!_returnPropertyCache.TryGetValue(key, out var resultProperty))
+                {
+                    if (method.ReturnType.IsConstructedGenericType)
+                    {
+                        resultProperty = doneTask.GetType().GetProperty("Result");
+                        _returnPropertyCache[key] = resultProperty;
+                    }
+                    else
+                    {
+                        _returnPropertyCache[key] = null;
+                    }
+                }
+
+                if (resultProperty != null)
+                {
+                    var result = resultProperty.GetValue(doneTask);
+
+                    return result;
+                }
+                else
+                {
+                    return null;
+                }
+
+
+               
                 
             }
             catch (Exception ex)

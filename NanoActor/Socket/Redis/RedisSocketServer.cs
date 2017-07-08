@@ -16,7 +16,7 @@ namespace NanoActor.Socket.Redis
     {
         IServiceProvider _services;
 
-        Lazy<IConnectionMultiplexer> _multiplexer;
+        IConnectionMultiplexer _multiplexer;
 
         NanoServiceOptions _serviceOptions;
 
@@ -24,7 +24,7 @@ namespace NanoActor.Socket.Redis
 
         ILogger _logger;
 
-        ISubscriber _subscriber => _multiplexer.Value.GetSubscriber();
+        ISubscriber _subscriber => _multiplexer.GetSubscriber();
 
         String _inputChannel => $"nano:{_serviceOptions.ServiceName}:{_guid}:*";
 
@@ -47,15 +47,7 @@ namespace NanoActor.Socket.Redis
 
             _guid = Guid.NewGuid().ToString().Substring(0, 8);
 
-            _multiplexer = new Lazy<IConnectionMultiplexer>(() => {
-
-                var m = ConnectionMultiplexer.Connect(_redisOptions.ConnectionString);
-                m.PreserveAsyncOrder = false;
-                _logger.LogInformation($"Client connected to Redis instance: {m.IsConnected}");
-
-                return m;
-
-            });
+           
         }
 
         protected void MessageReceived(string channel,byte[] message)
@@ -83,7 +75,24 @@ namespace NanoActor.Socket.Redis
 
         public async Task<SocketAddress> Listen()
         {
-            var multiplexer = _multiplexer.Value;
+
+
+            while (true)
+            {
+                try
+                {
+                    _multiplexer = ConnectionMultiplexer.Connect(_redisOptions.ConnectionString);
+                    break;
+                }
+                catch(Exception ex)
+                {
+                    _logger.LogCritical("Failed to connect to Redis");
+                }
+                await Task.Delay(1000);
+
+            }
+
+            _multiplexer.PreserveAsyncOrder = false;
 
             _guid = _localStage.StageGuid.Substring(0, 8);
 
