@@ -57,8 +57,6 @@ namespace NanoActor
             try
             {
                 return MessagePackSerializer.Serialize(o, CustomCompositeResolver.Instance);
-
-                
             }
             catch(Exception ex)
             {

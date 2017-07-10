@@ -24,8 +24,9 @@ namespace NanoActor
         IStageDirectory _stageDirectory;
 
         RemoteStageServer _stageServer;
-               
-        
+
+        ConcurrentDictionary<string, BufferBlock<ActorResponse>> _localResponseBuffer = new ConcurrentDictionary<string, BufferBlock<ActorResponse>>();
+
         ConcurrentDictionary<string, BufferBlock<ActorResponse>> _serverResponseBuffer = new ConcurrentDictionary<string, BufferBlock<ActorResponse>>();
         ConcurrentDictionary<string, SemaphoreSlim> _pingResponseBuffer = new ConcurrentDictionary<string, SemaphoreSlim>();
 
@@ -110,7 +111,7 @@ namespace NanoActor
         public void ServerResponse(ActorResponse response)
         {
 
-            if(_serverResponseBuffer.TryGetValue(response.Id.ToString(),out var buffer)){
+            if(_localResponseBuffer.TryGetValue(response.Id.ToString(),out var buffer)){
                 buffer.Post(response);
             }
             
@@ -131,14 +132,15 @@ namespace NanoActor
                 }
                 else
                 {
-                    var buffer = _serverResponseBuffer.GetOrAdd(request.Id.ToString(), new BufferBlock<ActorResponse>());
+                    var buffer = _localResponseBuffer.GetOrAdd(request.Id.ToString(), new BufferBlock<ActorResponse>());
 
                     await _stageServer.ReceivedActorRequest(request, null);
 
+                    
                     var response = await buffer.ReceiveAsync(timeout.Value);
 
                     buffer.Complete();
-                    _serverResponseBuffer.TryRemove(request.Id.ToString(), out _);
+                    _localResponseBuffer.TryRemove(request.Id.ToString(), out _);
 
                     return response;
                 }

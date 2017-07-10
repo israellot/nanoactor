@@ -50,7 +50,7 @@ namespace NanoActor.Socket.Redis
 
             _multiplexer = ConnectionMultiplexer.Connect(_redisOptions.ConnectionString);
             _multiplexer.PreserveAsyncOrder = false;
-                        
+            
 
             _logger.LogInformation($"Client connected to Redis instance: {_multiplexer.IsConnected}");
 
@@ -113,7 +113,7 @@ namespace NanoActor.Socket.Redis
 
         
 
-        private AsyncLock _initLock = new AsyncLock();
+       
 
         public async Task SendRequest(SocketAddress address, byte[] data)
         {
@@ -140,7 +140,7 @@ namespace NanoActor.Socket.Redis
             try
             {
                 
-                _subscriber.Publish(_outputChannel(address.Address), data, CommandFlags.FireAndForget | CommandFlags.HighPriority);
+               var result= _subscriber.Publish(_outputChannel(address.Address), data, CommandFlags.FireAndForget | CommandFlags.HighPriority);
                 
             }
             catch (Exception ex)

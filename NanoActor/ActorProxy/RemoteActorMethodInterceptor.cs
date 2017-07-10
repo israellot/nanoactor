@@ -33,8 +33,8 @@ namespace NanoActor.ActorProxy
             _serializer = serializer;
             this._telemetry = telemetry;
 
-#if DEBUG
-            _timeout = TimeSpan.FromMilliseconds(-1);
+#if !RELEASE
+            _timeout = timeout??TimeSpan.FromMilliseconds(-1);
 #else
             _timeout = timeout ?? TimeSpan.FromSeconds(5);
 #endif
@@ -145,6 +145,13 @@ namespace NanoActor.ActorProxy
                     }
                     else
                     {
+                        if (t.IsFaulted)
+                        {
+                            tracker.End(false);
+                            if (t.Exception != null)
+                                throw t.Exception;
+                        }
+
                         var result = t.Result;
 
                         if (!result.Success)

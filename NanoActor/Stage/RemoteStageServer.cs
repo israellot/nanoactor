@@ -9,6 +9,8 @@ using NanoActor.Directory;
 using System.Threading;
 using System.Linq;
 using Microsoft.Extensions.Logging;
+using MoreLinq;
+using NanoActor.Telemetry;
 
 namespace NanoActor
 {
@@ -21,6 +23,7 @@ namespace NanoActor
         ISocketServer _socketServer;       
         ITransportSerializer _serializer;
         IStageDirectory _stageDirectory;
+        ITelemetry _telemetry;
 
         StageAddress _ownAddress;
         Lazy<RemoteStageClient> _remoteClient;
@@ -39,7 +42,8 @@ namespace NanoActor
             LocalStage localStage,
             ILogger<RemoteStageServer> logger,
             ISocketServer socketServer,            
-            ITransportSerializer serializer           
+            ITransportSerializer serializer,
+            ITelemetry telemetry
 
             )
         {
@@ -56,6 +60,8 @@ namespace NanoActor
             _serializer = serializer;
 
             _logger = logger;
+
+            _telemetry = telemetry;
 
             _remoteClient = new Lazy<RemoteStageClient>(() => {
                 return _services.GetRequiredService<RemoteStageClient>();
@@ -173,17 +179,27 @@ namespace NanoActor
 
                 ConcurrentDictionary<string, int> _missedPings = new ConcurrentDictionary<string, int>();
 
+                List<string> stages = new List<string>();
+
+                
+
                 while (true)
                 {
                     await Task.Delay(1000);
 
                     try
                     {
-                        var stages = await _stageDirectory.GetAllStages();
+                        var newStages = await _stageDirectory.GetAllStages();
 
-                        stages = stages.Where(s => s != _ownAddress.StageId).ToList();
+                        if (!newStages.SequenceEqual(stages))
+                        {
+                            _logger.LogDebug($"Stages: {string.Join(",", newStages)}");
+                        }
+                        stages = newStages;
 
-                        foreach (var stage in stages)
+                        newStages = newStages.Where(s => s != _ownAddress.StageId).ToList();
+
+                        foreach (var stage in newStages)
                         {
                             var localStage = stage;
                             var task = Task.Run(async () =>
@@ -209,6 +225,10 @@ namespace NanoActor
                                 }
                                 else
                                 {
+                                    var metric = _telemetry.Metric($"Ping.{localStage}.{stage}");
+
+                                    metric.Track(pingResponse.Value.TotalMilliseconds);
+
                                     _missedPings.TryRemove(localStage, out _);
                                 }
 
@@ -343,14 +363,26 @@ namespace NanoActor
 
         protected async Task ProcessActorRequestLocally(ActorRequest message, SocketAddress sourceAddress)
         {
-            var response = await _localStage.Execute(message);
+            ActorResponse response = null;
+            try {
+                response = await _localStage.Execute(message);
+            }
+            catch(Exception ex)
+            {
+                response = new ActorResponse()
+                {
+                    Id = message.Id,
+                    Exception = ex,
+                    Success = false
+                };
+            }
 
             if (!message.FireAndForget)
             {
                 await this.SendActorResponse(sourceAddress, response);
             }
 
-           
+
         }
 
 

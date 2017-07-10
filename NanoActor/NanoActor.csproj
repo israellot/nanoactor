@@ -6,6 +6,8 @@
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <PlatformTarget>AnyCPU</PlatformTarget>
+    <DefineConstants>DEBUG;TRACE;RELEASE;NETSTANDARD1_6</DefineConstants>
+    <Optimize>False</Optimize>
   </PropertyGroup>
   
   

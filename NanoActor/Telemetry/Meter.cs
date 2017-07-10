@@ -131,7 +131,8 @@ namespace NanoActor.Telemetry
             {
                 try
                 {
-                    
+                    // Wait for end end of the aggregation period:
+                    await Task.Delay(_aggregationPeriod).ConfigureAwait(continueOnCapturedContext: false);
 
                     // Atomically snap the current aggregation:
                     MeterAggregator nextAggregator = new MeterAggregator(DateTimeOffset.UtcNow);
@@ -162,8 +163,7 @@ namespace NanoActor.Telemetry
 
                         }
 
-                        // Wait for end end of the aggregation period:
-                        await Task.Delay(_aggregationPeriod).ConfigureAwait(continueOnCapturedContext: false);
+                        
                     }
                 }
                 catch (Exception ex)

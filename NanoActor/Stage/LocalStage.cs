@@ -263,9 +263,17 @@ namespace NanoActor
 
                         if (_actorInstances.TryAdd(actorInstanceKey, actorInstance))
                         {
-                            actorInstance.Instance.Id = actorId;
-                            actorInstance.Instance.Configure(actorTypeName, _pubsub);
-                            await actorInstance.Instance.Run();
+                            try
+                            {
+                                actorInstance.Instance.Id = actorId;
+                                actorInstance.Instance.Configure(actorTypeName, _pubsub);
+                                await actorInstance.Instance.Run();
+                            }
+                            catch(Exception ex)
+                            {
+                                throw new Exception("Failed to initialize actor", ex);
+                            }
+                            
                         }
 
                         _logger.LogDebug("Activated instance for {0}. Actor Id : {1}", actorTypeName, actorId);
