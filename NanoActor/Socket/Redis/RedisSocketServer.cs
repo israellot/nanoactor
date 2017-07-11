@@ -92,7 +92,7 @@ namespace NanoActor.Socket.Redis
                 try
                 {
                     _multiplexer = ConnectionMultiplexer.Connect(_redisOptions.ConnectionString);
-
+                    
 
                     _multiplexer.InternalError+= (sender,e)=> {
                         if (e.Exception != null)
@@ -101,9 +101,7 @@ namespace NanoActor.Socket.Redis
 
                     _multiplexer.ConnectionFailed += (sender, e) => {
                         if (e.Exception != null)
-                            _telemetry.Exception(e.Exception);
-
-                        _telemetry.Event("Redis failure", new Dictionary<string, string> { { "Type", e.FailureType.ToString() } });
+                            _telemetry.Exception(e.Exception);                                                
                     };
                                         
 
@@ -118,7 +116,7 @@ namespace NanoActor.Socket.Redis
             }
 
             _multiplexer.PreserveAsyncOrder = false;
-
+            
             _guid = _localStage.StageGuid.Substring(0, 8);
 
           

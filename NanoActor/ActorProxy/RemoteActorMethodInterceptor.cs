@@ -186,8 +186,6 @@ namespace NanoActor.ActorProxy
             }
            
 
-            
-
         }
 
         public void InterceptSynchronous(IInvocation invocation)

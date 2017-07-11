@@ -149,7 +149,7 @@ namespace DebugHelper
 
             var stop = false;
 
-            for(int i = 0; i < 100; i++)
+            for(int i = 0; i < 500; i++)
             {
 
                 var iCopy = i;

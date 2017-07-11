@@ -24,7 +24,7 @@ namespace NanoActor.Test.Actors
 
     public class TestActor : Actor, ITestActor
     {
-        public TestActor(ProxyFactory proxyFactory) : base(proxyFactory)
+        public TestActor(IServiceProvider services) : base(services)
         {
 
         }

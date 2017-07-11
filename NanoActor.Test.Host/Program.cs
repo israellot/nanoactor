@@ -22,12 +22,17 @@ namespace NanoActor.Test.Host
                 c.AddTransient<ITestActor, TestActor>();
                 //c.AddSingleton<ITransportSerializer, MsgPackTransportSerializer>();
 
+#if DEBUG
                 log.AddConsole(LogLevel.Debug).AddDebug();
+
+#else
+                log.AddConsole(LogLevel.Error);
+#endif
 
                 options.AddJsonFile("appsettings.json");
             });
 
-            stage.Run();
+            stage.RunServer();
 
 
             Task.Run(() => {

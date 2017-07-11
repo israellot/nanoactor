@@ -90,23 +90,29 @@ namespace NanoActor
         public void ProcessServerInput()
         {
 
-            Task.Run(async () =>
+            foreach(var i in Enumerable.Range(0, 10))
             {
 
-                while (true)
+                Task.Factory.StartNew(async () =>
                 {
-                    try
+
+                    while (true)
                     {
-                        var received = await _socketServer.Receive();
-
-                        Interlocked.Increment(ref _inputProccessBacklog);
-
-                        Task.Factory.StartNew(async () =>
+                        try
                         {
-                            
+                            var received = await _socketServer.Receive();
+
+                            Interlocked.Increment(ref _inputProccessBacklog);
+
                             if (received.Data != null)
                             {
                                 var remoteMessage = _serializer.Deserialize<RemoteStageMessage>(received.Data);
+
+                                if (remoteMessage == null)
+                                {
+                                    Interlocked.Decrement(ref _inputProccessBacklog);
+                                    return;
+                                }
 
                                 if (remoteMessage.IsActorResponse)
                                 {
@@ -114,8 +120,11 @@ namespace NanoActor
                                 }
                                 if (remoteMessage.IsActorRequest)
                                 {
+                                    Task.Factory.StartNew(() =>
+                                    {
+                                        return ReceivedActorRequest(remoteMessage.ActorRequest, received.Address);
+                                    }, TaskCreationOptions.PreferFairness);
 
-                                    await ReceivedActorRequest(remoteMessage.ActorRequest, received.Address).ConfigureAwait(false);
 
                                 }
                                 if (remoteMessage.IsPingRequest)
@@ -125,18 +134,23 @@ namespace NanoActor
 
                                 Interlocked.Decrement(ref _inputProccessBacklog);
                             }
-                        },TaskCreationOptions.PreferFairness);
 
+
+
+                        }
+                        catch (Exception ex)
+                        {
+                            _telemetry.Exception(ex);
+                        }
 
                     }
-                    catch (Exception ex)
-                    {
-                        _telemetry.Exception(ex);
-                    }
 
-                }
+                },TaskCreationOptions.LongRunning);
 
-            });
+
+            }
+
+          
 
 
         }
