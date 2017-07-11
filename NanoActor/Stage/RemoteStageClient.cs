@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 using System.Threading.Tasks.Dataflow;
 using NanoActor.Directory;
 using System.Threading;
+using NanoActor.Telemetry;
 
 namespace NanoActor
 {
@@ -25,6 +26,8 @@ namespace NanoActor
 
         RemoteStageServer _stageServer;
 
+        ITelemetry _telemetry;
+
         ConcurrentDictionary<string, BufferBlock<ActorResponse>> _localResponseBuffer = new ConcurrentDictionary<string, BufferBlock<ActorResponse>>();
 
         ConcurrentDictionary<string, BufferBlock<ActorResponse>> _serverResponseBuffer = new ConcurrentDictionary<string, BufferBlock<ActorResponse>>();
@@ -39,7 +42,8 @@ namespace NanoActor
             LocalStage localStage,
             ISocketClient socketClient,
             ITransportSerializer serializer,
-            RemoteStageServer stageServer
+            RemoteStageServer stageServer,
+            ITelemetry telemetry
             )
         {
             _services = services;
@@ -55,6 +59,8 @@ namespace NanoActor
             _serializer = serializer;
 
             _stageServer = stageServer;
+
+            _telemetry = telemetry;
 
             ProcessServerInput();
         }
@@ -98,7 +104,7 @@ namespace NanoActor
                     }
                     catch (Exception ex)
                     {
-
+                        _telemetry.Exception(ex);
                     }
 
                 }

@@ -65,7 +65,7 @@ namespace NanoActor.ActorProxy
                         
             var task = Task.Run(() =>{
 
-                var tracker = _telemetry.Dependency($"proxy: {message.ActorInterface}", message.ActorMethodName).Start();
+                var tracker = _telemetry.Dependency($"proxy.actor:{message.ActorInterface}", message.ActorMethodName);
 
                 return _remoteClient.SendActorRequest(message, _timeout)
                 .ContinueWith((t) =>
@@ -131,7 +131,7 @@ namespace NanoActor.ActorProxy
 
             var task = Task.Run(() =>
             {
-                var tracker = _telemetry.Dependency($"proxy: {message.ActorInterface}", message.ActorMethodName).Start();
+                var tracker = _telemetry.Dependency($"proxy.actor:{message.ActorInterface}", message.ActorMethodName);
 
                 return _remoteClient.SendActorRequest(message, _timeout)
                 .ContinueWith(t =>

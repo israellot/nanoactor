@@ -11,10 +11,12 @@ namespace NanoActor.Telemetry
         Lazy<Metric> metric;
 
         ITelemetrySink[] _sinks;
-        public MetricTracker(ITelemetrySink[] sinks,string name)
+
+
+        public MetricTracker(ITelemetrySink[] sinks,string name,IDictionary<string,string> properties=null)
         {
             this._sinks = sinks;
-            this.metric = new Lazy<Metric>(() => { return new Metric(name, sinks); });
+            this.metric = new Lazy<Metric>(() => { return new Metric(name, sinks, properties); });
         }
 
         public void Track(double value)

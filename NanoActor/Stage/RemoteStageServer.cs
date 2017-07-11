@@ -101,10 +101,9 @@ namespace NanoActor
 
                         Interlocked.Increment(ref _inputProccessBacklog);
 
-                        Task.Run(async () =>
+                        Task.Factory.StartNew(async () =>
                         {
                             
-
                             if (received.Data != null)
                             {
                                 var remoteMessage = _serializer.Deserialize<RemoteStageMessage>(received.Data);
@@ -115,29 +114,29 @@ namespace NanoActor
                                 }
                                 if (remoteMessage.IsActorRequest)
                                 {
-                                   
-                                    await ReceivedActorRequest(remoteMessage.ActorRequest, received.Address);
+
+                                    await ReceivedActorRequest(remoteMessage.ActorRequest, received.Address).ConfigureAwait(false);
 
                                 }
                                 if (remoteMessage.IsPingRequest)
                                 {
-                                    await ProcessPingRequest(received.Address, remoteMessage.Ping);
+                                    await ProcessPingRequest(received.Address, remoteMessage.Ping).ConfigureAwait(false);
                                 }
 
                                 Interlocked.Decrement(ref _inputProccessBacklog);
                             }
-                        }).ConfigureAwait(false);
+                        },TaskCreationOptions.PreferFairness);
 
-                        
+
                     }
                     catch (Exception ex)
                     {
-
+                        _telemetry.Exception(ex);
                     }
 
                 }
 
-            }).ConfigureAwait(false);
+            });
 
 
         }
@@ -181,8 +180,7 @@ namespace NanoActor
 
                 List<string> stages = new List<string>();
 
-                
-
+                ConcurrentDictionary<string, MetricTracker> _metrics = new ConcurrentDictionary<string, MetricTracker>();
                 while (true)
                 {
                     await Task.Delay(1000);
@@ -197,9 +195,11 @@ namespace NanoActor
                         }
                         stages = newStages;
 
-                        newStages = newStages.Where(s => s != _ownAddress.StageId).ToList();
+                        var otherStages = newStages.Where(s => s != _ownAddress.StageId).ToList();
 
-                        foreach (var stage in newStages)
+                        
+
+                        foreach (var stage in otherStages)
                         {
                             var localStage = stage;
                             var task = Task.Run(async () =>
@@ -225,7 +225,11 @@ namespace NanoActor
                                 }
                                 else
                                 {
-                                    var metric = _telemetry.Metric($"Ping.{localStage}.{stage}");
+                                    var metric = _metrics.GetOrAdd(localStage, _telemetry.Metric($"Stage.Ping", new Dictionary<string, string>() {
+                                        {"FromStage",_ownAddress.StageId},
+                                        {"ToStage",localStage }
+                                    }));
+
 
                                     metric.Track(pingResponse.Value.TotalMilliseconds);
 
@@ -257,6 +261,7 @@ namespace NanoActor
                 return;
             }
 
+            
 
             
             if (_pausedActorMessageQueues.TryGetValue(string.Join(":", message.ActorInterface, message.ActorId), out var queue))

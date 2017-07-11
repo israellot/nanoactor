@@ -58,6 +58,8 @@ namespace NanoActor.Util
         /// </summary>
         private void NotifyThreadPoolOfPendingWork()
         {
+            
+
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 // Note that the current thread is now processing work items.

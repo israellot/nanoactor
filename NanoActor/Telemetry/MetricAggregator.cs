@@ -70,13 +70,16 @@ namespace NanoActor.Telemetry
         private MetricAggregator _aggregator = null;
         private readonly ITelemetrySink[] _sinks;
 
+        private IDictionary<string, string> _properties;
+
         public string Name { get; }
 
-        public Metric(string name, ITelemetrySink[] sinks)
+        public Metric(string name, ITelemetrySink[] sinks,IDictionary<string,string> properties=null)
         {
             this.Name = name ?? "null";
             this._aggregator = new MetricAggregator(DateTimeOffset.UtcNow);
             this._sinks = sinks ?? throw new ArgumentNullException(nameof(sinks));
+            _properties = properties;
 
             Task.Run(this.AggregatorLoopAsync);
         }
@@ -103,6 +106,7 @@ namespace NanoActor.Telemetry
                     MetricAggregator nextAggregator = new MetricAggregator(DateTimeOffset.UtcNow);
                     MetricAggregator prevAggregator = Interlocked.Exchange(ref _aggregator, nextAggregator);
 
+                    
                     // Only send anything is at least one value was measured:
                     if (prevAggregator != null && prevAggregator.Count > 0)
                     {
@@ -123,7 +127,8 @@ namespace NanoActor.Telemetry
                                    prevAggregator.Max,
                                    prevAggregator.StandardDeviation,
                                    aggPeriod,
-                                   prevAggregator.StartTimestamp
+                                   prevAggregator.StartTimestamp,
+                                   _properties
                                    );
                         }
 
@@ -134,7 +139,7 @@ namespace NanoActor.Telemetry
                 }
                 catch (Exception ex)
                 {
-                    
+                   
                 }
             }
         }

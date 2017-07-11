@@ -56,6 +56,8 @@ namespace NanoActor
 
         MeterTracker _reqSecondMeter;
 
+        MetricTracker _actorInstancesMetric;
+
         PubSubManager _pubsub;
 
         public String StageGuid { get; private set; }
@@ -79,7 +81,20 @@ namespace NanoActor
 
             _telemetry = telemetry;
 
-            _reqSecondMeter = _telemetry.Meter("Stage.Requests", TimeSpan.FromSeconds(10));
+            var stageDefaultProperty = new Dictionary<string, string>
+                    {
+                        { "StageId", StageGuid }
+                    };
+
+            _telemetry.SetProperties(stageDefaultProperty);
+
+
+            _reqSecondMeter = _telemetry.Meter(
+                "Stage.Requests",TimeSpan.FromSeconds(60)
+                );
+
+            _actorInstancesMetric = _telemetry.Metric(
+                "Stage.ActiveActorInstances");
         }
 
         public void Run()
@@ -146,7 +161,7 @@ namespace NanoActor
                     }
                     catch (Exception ex)
                     {
-
+                        _telemetry.Exception(ex);
                     }
 
 
@@ -217,6 +232,8 @@ namespace NanoActor
                         
             var actorInstanceKey = string.Join(",", actorTypeName, actorId);
 
+            _actorInstancesMetric.Track(_actorInstances.Count);
+
             if (_actorInstances.TryGetValue(actorInstanceKey, out var actorInstance))
             {
                 return actorInstance;
@@ -250,8 +267,7 @@ namespace NanoActor
                         Object actor = null;
 
                         actor = _services.GetRequiredService(actorType);
-
-
+                        
                         actorInstance = new LocalActorInstance()
                         {
                             ActorId = actorId,
@@ -261,27 +277,29 @@ namespace NanoActor
                             ActorTypeName=actorTypeName
                         };
 
-                        if (_actorInstances.TryAdd(actorInstanceKey, actorInstance))
+                        try
                         {
-                            try
+                            actorInstance.Instance.Id = actorId;
+                            actorInstance.Instance.Configure(actorTypeName, _pubsub);
+                            await actorInstance.Instance.Run();
+                            if(!_actorInstances.TryAdd(actorInstanceKey, actorInstance))
                             {
-                                actorInstance.Instance.Id = actorId;
-                                actorInstance.Instance.Configure(actorTypeName, _pubsub);
-                                await actorInstance.Instance.Run();
+                                actorInstance.Instance.Dispose();
                             }
-                            catch(Exception ex)
-                            {
-                                throw new Exception("Failed to initialize actor", ex);
-                            }
-                            
                         }
+                        catch (Exception ex)
+                        {
+                            throw new Exception("Failed to initialize actor", ex);
+                        }
+
+                        
 
                         _logger.LogDebug("Activated instance for {0}. Actor Id : {1}", actorTypeName, actorId);
                     }
 
                     
                 }
-                _activationLocks.TryRemove(string.Join(":", actorTypeName, actorId), out _);
+                _activationLocks.TryRemove(actorInstanceKey, out _);
 
 
                 return actorInstance;
@@ -293,15 +311,26 @@ namespace NanoActor
         {
             _reqSecondMeter.Tick();
 
+            var actorInstanceKey = string.Join(",", message.ActorInterface, message.ActorId);
+
             var actorInstance = await ActivateInstance(message.ActorInterface, message.ActorId);
 
             actorInstance.LastAccess = DateTimeOffset.UtcNow;
+
+            
+
+            var track = _telemetry.Dependency($"actor:{message.ActorInterface}", message.ActorMethodName);
+
             try
             {
+              
                 var result = await actorInstance.Instance.Post(_serializer, message, timeout);
 
                 if (result is Exception)
                 {
+
+                    track.End(false);
+
                     var response = new ActorResponse()
                     {
                         Success = false,
@@ -313,6 +342,7 @@ namespace NanoActor
                 }
                 else
                 {
+                    track.End(true);
                     var response = new ActorResponse()
                     {
                         Success = true,
@@ -325,12 +355,17 @@ namespace NanoActor
             }
             catch(Exception ex)
             {
+                track.End(false);
+
                 var response = new ActorResponse()
                 {
                     Success = false,
                     Exception = (Exception)ex,
                     Id = message.Id
                 };
+
+                _actorInstances.TryRemove(actorInstanceKey, out var instance);
+                instance.Instance.Dispose();
 
                 return response;
             }

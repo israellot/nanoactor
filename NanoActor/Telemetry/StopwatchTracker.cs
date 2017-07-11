@@ -14,9 +14,7 @@ namespace NanoActor.Telemetry
 
         public StopwatchTracker()
         {
-
-
-
+            Start();
         }
         
         public StopwatchTracker Start()

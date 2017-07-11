@@ -93,11 +93,13 @@ namespace NanoActor.Telemetry
         private MeterAggregator _aggregator = null;
         private readonly ITelemetrySink[] _sinks;
 
+        IDictionary<string, string> _properties;
+
         public string Name { get; }
 
         public LinkedList<MeterDataPoint> History { get; private set; } = new LinkedList<MeterDataPoint>();
 
-        public Meter(string name, ITelemetrySink[] sinks, TimeSpan? aggregationPeriod = null,Int32 historyKeep=30)
+        public Meter(string name, ITelemetrySink[] sinks, TimeSpan? aggregationPeriod = null,Int32 historyKeep=30, IDictionary<string, string> properties=null)
         {
             
             if (aggregationPeriod == TimeSpan.Zero)
@@ -110,8 +112,9 @@ namespace NanoActor.Telemetry
             this._aggregator = new MeterAggregator(DateTimeOffset.UtcNow);
             this._sinks = sinks ?? throw new ArgumentNullException(nameof(sinks));
             this._historyCount = historyKeep;
+            this._properties = properties;
 
-           
+
 
             Task.Run(this.AggregatorLoopAsync);
         }
@@ -146,7 +149,7 @@ namespace NanoActor.Telemetry
                         History.RemoveLast();
 
                     // Only send anything is at least one value was measured:
-                    if (prevAggregator != null && prevAggregator.Count > 0)
+                    if (prevAggregator != null)
                     {
                         
                         if (aggPeriod.TotalMilliseconds >0)
@@ -157,7 +160,8 @@ namespace NanoActor.Telemetry
                                    Name,
                                    prevAggregator.Count,
                                    aggPeriod,
-                                   prevAggregator.StartTimestamp
+                                   prevAggregator.StartTimestamp,
+                                   _properties
                                    );
                             }
 

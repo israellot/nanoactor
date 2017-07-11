@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Options;
 using NanoActor.Options;
 using NanoActor.Redis;
+using NanoActor.Telemetry;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
@@ -26,6 +27,8 @@ namespace NanoActor.Socket.Redis
 
         ISubscriber _subscriber => _multiplexer.GetSubscriber();
 
+        ITelemetry _telemetry;
+
         String _inputChannel => $"nano:{_serviceOptions.ServiceName}:{_guid}:*";
 
         String _outputChannel(string guid) => $"nano:{_serviceOptions.ServiceName}:{guid}:{_guid}";
@@ -36,12 +39,19 @@ namespace NanoActor.Socket.Redis
 
         LocalStage _localStage;
 
-        public RedisSocketServer(IServiceProvider services, LocalStage localStage, ILogger<RedisSocketServer> logger,IOptions<NanoServiceOptions> serviceOptions, IOptions<RedisOptions> redisOptions)
+        public RedisSocketServer(
+            IServiceProvider services,
+            LocalStage localStage,
+            ITelemetry telemetry,
+            ILogger<RedisSocketServer> logger,
+            IOptions<NanoServiceOptions> serviceOptions,
+            IOptions<RedisOptions> redisOptions)
         {
             this._services = services;
             this._serviceOptions = serviceOptions.Value;
             this._redisOptions = redisOptions.Value;
             this._localStage = localStage;
+            this._telemetry = telemetry;
 
             _logger = logger;
 
@@ -82,6 +92,21 @@ namespace NanoActor.Socket.Redis
                 try
                 {
                     _multiplexer = ConnectionMultiplexer.Connect(_redisOptions.ConnectionString);
+
+
+                    _multiplexer.InternalError+= (sender,e)=> {
+                        if (e.Exception != null)
+                            _telemetry.Exception(e.Exception);
+                    };
+
+                    _multiplexer.ConnectionFailed += (sender, e) => {
+                        if (e.Exception != null)
+                            _telemetry.Exception(e.Exception);
+
+                        _telemetry.Event("Redis failure", new Dictionary<string, string> { { "Type", e.FailureType.ToString() } });
+                    };
+                                        
+
                     break;
                 }
                 catch(Exception ex)
@@ -108,6 +133,7 @@ namespace NanoActor.Socket.Redis
             }
             catch (Exception ex)
             {
+                _telemetry.Exception(ex);
                 _logger.LogCritical("Failed to start listener");
             }
 
@@ -121,6 +147,8 @@ namespace NanoActor.Socket.Redis
                 StageId= _localStage.StageGuid
             };
         }
+
+       
 
         public async Task<SocketData> Receive()
         {

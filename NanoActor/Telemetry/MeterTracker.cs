@@ -11,10 +11,13 @@ namespace NanoActor.Telemetry
         Lazy<Meter> meter;
 
         ITelemetrySink[] _sinks;
-        public MeterTracker(ITelemetrySink[] sinks, string name,TimeSpan? aggregationPeriod=null)
+        
+
+        public MeterTracker(ITelemetrySink[] sinks, string name,TimeSpan? aggregationPeriod=null,IDictionary<string,string> properties=null)
         {
             this._sinks = sinks;
-            this.meter = new Lazy<Meter>(() => { return new Meter(name, sinks, aggregationPeriod); });
+            this.meter = new Lazy<Meter>(() => { return new Meter(name, sinks, aggregationPeriod,properties: properties); });
+
         }
 
         public void Tick()

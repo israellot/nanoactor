@@ -8,9 +8,14 @@ namespace NanoActor.Telemetry
 
     public interface ITelemetry
     {
-        DependencyTracker Dependency(String dependencyName, string commandName);
-        MetricTracker Metric(string metricName);
+        DependencyTracker Dependency(String dependencyName, string commandName, IDictionary<string, string> properties = null);
+        MetricTracker Metric(string metricName, IDictionary<string, string> properties = null);
+        MeterTracker Meter(string meterName, TimeSpan? aggregationPeriod, IDictionary<string, string> properties = null);
 
-        MeterTracker Meter(string meterName, TimeSpan? aggregationPeriod);
+        void Event(string eventName, IDictionary<string, string> properties=null, IDictionary<string, double> metrics=null);
+
+        void Exception(Exception ex, IDictionary<string, string> properties = null, IDictionary<string, double> metrics = null);
+
+        void SetProperties(IDictionary<string, string> properties);
     }
 }

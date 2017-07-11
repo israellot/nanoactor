@@ -10,18 +10,28 @@ using NanoActor.Util;
 using NanoActor.PubSub;
 using NanoActor.ActorProxy;
 using System.Collections.Concurrent;
-using System.Threading.Tasks.Dataflow;
 
 namespace NanoActor
 {
 
+    public class ActorEvent<T>
+    {
+        public String ActorInterface { get; set; }
+
+        public String EventName { get; set; }
+
+        public String ActorId { get; set; }
+
+        public T EventData { get; set; }
+    }
+
     
     
     
-    public abstract class Actor:IActor,IDisposable
+    public abstract class ThreadActor:IActor,IDisposable
     {
 
-       
+        OrderedTaskScheduler _taskScheduler;
 
         PubSubManager _pubsub;
                 
@@ -32,8 +42,6 @@ namespace NanoActor
 
         List<ActorTimer> _timers = new List<ActorTimer>();
 
-        BufferBlock<ActorRequest> _requestBuffer = new BufferBlock<ActorRequest>();
-
         public String Id { get; set; }
 
         protected ProxyFactory ProxyFactory;
@@ -42,9 +50,8 @@ namespace NanoActor
 
         IServiceProvider _serviceProvider;
 
-        AsyncLock _executionLock = new AsyncLock();
 
-        public Actor(IServiceProvider _serviceProvider)
+        public ThreadActor(IServiceProvider _serviceProvider)
         {
             this._serviceProvider = _serviceProvider;
         }
@@ -80,14 +87,17 @@ namespace NanoActor
 
         internal async Task Run()
         {
-            
+            _taskScheduler = new OrderedTaskScheduler();
+
             await this.OnAcvitate();
 
         }
 
         public async Task<object> Post(ITransportSerializer serializer,ActorRequest message,TimeSpan? timeout=null,CancellationToken? ct=null)
         {
-          
+            if (_taskScheduler == null)
+                return null;
+
             try
             {
 
@@ -109,20 +119,23 @@ namespace NanoActor
                     arguments.Add(serializer.Deserialize(parameterInfo.ParameterType, message.Arguments[i]));
                 }
 
-                Task workTask = null;
-
-                using (var asyncLock = await _executionLock.LockAsync())
+                var taskResult = await Task.Factory.StartNew(async () =>
                 {
-                    workTask = (Task)method.Invoke(this, arguments.ToArray());
+
+                    Task workTask = (Task)method.Invoke(this, arguments.ToArray());
                     await workTask;
-                }
-                
-                
+
+                    return workTask;
+
+                }, ct ?? CancellationToken.None, TaskCreationOptions.None, _taskScheduler);
+
+
+                var doneTask = taskResult.Result;
                 if (!_returnPropertyCache.TryGetValue(key, out var resultProperty))
                 {
                     if (method.ReturnType.IsConstructedGenericType)
                     {
-                        resultProperty = workTask.GetType().GetProperty("Result");
+                        resultProperty = doneTask.GetType().GetProperty("Result");
 
                         _returnPropertyCache.TryAdd(key, resultProperty);
 
@@ -136,7 +149,7 @@ namespace NanoActor
 
                 if (resultProperty != null)
                 {
-                    var result = resultProperty.GetValue(workTask);
+                    var result = resultProperty.GetValue(doneTask);
 
                     return result;
                 }
@@ -162,7 +175,7 @@ namespace NanoActor
 
         internal Task WaitIdle()
         {
-            return Task.CompletedTask;
+            return _taskScheduler.WaitIdle();
         }
 
         protected async Task Publish<T>(string eventName, T data)

@@ -26,12 +26,50 @@ namespace NanoActor.Telemetry
             _logger = logger;
         }
 
-        public void TrackDependency(string dependencyName, string commandName, DateTimeOffset startTimestamp, TimeSpan elaspsed, bool success)
+        public void TrackDependency(string dependencyName, string commandName, DateTimeOffset startTimestamp, TimeSpan elaspsed, bool success, IDictionary<string, string> properties = null)
         {
-            _logger.LogInformation($"Telemetry Dependency: {dependencyName}:{commandName} {elaspsed.Humanize()} {(success?"OK":"FAIL")}");
+
+            var infoMessage = $"Telemetry Dependency: {dependencyName}:{commandName} {elaspsed.Humanize()} {(success ? "OK" : "FAIL")}";
+            if (properties!=null && properties.Count > 0)
+            {
+                infoMessage += "\r\n\tProperties:\r\n\t";
+                infoMessage += string.Join("\r\n\t", properties.Select(p => $"{p.Key} : {p.Value}"));
+            }
+
+
+            _logger.LogInformation(infoMessage);
         }
 
-        public void TrackMeter(string meterName, int count, TimeSpan period, DateTimeOffset startTimestamp)
+        public void TrackEvent(string eventName, IDictionary<string, string> properties = null, IDictionary<string, double> metrics = null)
+        {
+            var infoMessage = $"Telemetry Event: {eventName}";
+            
+            if (properties != null && properties.Count > 0)
+            {
+                infoMessage += "\r\n\tProperties:\r\n\t";
+                infoMessage += string.Join("\r\n\t", properties.Select(p => $"{p.Key} : {p.Value}"));
+            }
+
+            _logger.LogInformation(infoMessage);
+        }
+
+        public void TrackException(Exception ex, IDictionary<string, string> properties = null, IDictionary<string, double> metrics = null)
+        {
+            var infoMessage = $"Telemetry Exception: {ex.Message}";
+
+            infoMessage += "\r\n\t Stack Trace" + ex.StackTrace;
+          
+
+            if (properties != null && properties.Count > 0)
+            {
+                infoMessage += "\r\n\r\n\tProperties:\r\n\t";
+                infoMessage += string.Join("\r\n\t", properties.Select(p => $"{p.Key} : {p.Value}"));
+            }
+
+            _logger.LogInformation(infoMessage);
+        }
+
+        public void TrackMeter(string meterName, int count, TimeSpan period, DateTimeOffset startTimestamp, IDictionary<string, string> properties = null)
         {
             var ranges = new[] { 1, 60, 60 * 60 };
 
@@ -45,13 +83,27 @@ namespace NanoActor.Telemetry
             if(range == 60) rangeString = "min";
             if (range == 60*60) rangeString = "h";
 
-            _logger.LogInformation($"Telemetry Meter: {meterName} {meter:f2}/{rangeString}");
+            var infoMessage = $"Telemetry Meter: {meterName} {meter:f2}/{rangeString}";
+            if (properties!=null && properties.Count > 0)
+            {
+                infoMessage+="\r\n\tProperties:\r\n\t";
+                infoMessage+= string.Join("\r\n\t", properties.Select(p => $"{p.Key} : {p.Value}"));
+            }
+            
+
+            _logger.LogInformation(infoMessage);
 
         }
 
-        public void TrackMetric(string metricName, int count, double sum, double min, double max, double stdDeviation, TimeSpan period, DateTimeOffset startTimestamp)
+        public void TrackMetric(string metricName, int count, double sum, double min, double max, double stdDeviation, TimeSpan period, DateTimeOffset startTimestamp, IDictionary<string, string> properties = null)
         {
-            _logger.LogInformation($"Telemetry Metric: {metricName} Count: {count} Min: {min} Max: {max} Period: {period.Humanize()}");
+            var infoMessage = $"Telemetry Metric: {metricName} Count: {count} Min: {min} Max: {max} Period: {period.Humanize()}";
+            if (properties!=null && properties.Count > 0)
+            {
+                infoMessage += "\r\n\tProperties:\r\n\t";
+                infoMessage += string.Join("\r\n\t", properties.Select(p => $"{p.Key} : {p.Value}"));
+            }
+            _logger.LogInformation(infoMessage);
         }
     }
 }
