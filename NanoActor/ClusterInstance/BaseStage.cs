@@ -167,6 +167,15 @@ namespace NanoActor.ClusterInstance
 
         }
 
+        public void StopServer()
+        {
+            _remoteServer = _serviceProvider.GetRequiredService<RemoteStageServer>();
+
+
+            _remoteServer.Stop();
+
+        }
+
         public async Task<Boolean> Connected()
         {
             var stages = await _stageDirectory.GetAllStages();

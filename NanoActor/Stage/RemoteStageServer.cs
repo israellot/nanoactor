@@ -33,6 +33,8 @@ namespace NanoActor
 
         volatile Int32 _inputProccessBacklog = 0;
 
+        volatile Int32 _paused = 0;
+
         ILogger _logger;
 
         public RemoteStageServer(
@@ -86,6 +88,25 @@ namespace NanoActor
 
         }
 
+        public void Stop()
+        {
+            //pause incomming queues
+            Interlocked.Exchange(ref _paused, 1);
+
+            //stop local stage
+            _localStage.Stop();
+
+            //forward all requests from now on
+            _localStage.Enabled = false;
+
+            //unregister stage
+            _stageDirectory.UnregisterStage(_ownAddress.StageId);
+
+            //unpause incomming queues
+            Interlocked.Exchange(ref _paused, 0);
+
+        }
+
 
         public void ProcessServerInput()
         {
@@ -101,6 +122,8 @@ namespace NanoActor
                         try
                         {
                             var received = await _socketServer.Receive();
+
+                            
 
                             Interlocked.Increment(ref _inputProccessBacklog);
 
@@ -171,7 +194,6 @@ namespace NanoActor
                         if (!stages.Contains(_ownAddress.StageId))
                         {
                             //others have signaled this stage as dead
-
                             await _stageDirectory.RegisterStage(_localStage.StageGuid, _ownAddress.SocketAddress);
                         }
 
@@ -195,9 +217,12 @@ namespace NanoActor
                 List<string> stages = new List<string>();
 
                 ConcurrentDictionary<string, MetricTracker> _metrics = new ConcurrentDictionary<string, MetricTracker>();
+
+                var stageCountMetric = _telemetry.Metric("Stage.Count");
+
                 while (true)
                 {
-                    await Task.Delay(1000);
+                    await Task.Delay(1000);                    
 
                     try
                     {
@@ -211,7 +236,7 @@ namespace NanoActor
 
                         var otherStages = newStages.Where(s => s != _ownAddress.StageId).ToList();
 
-                        
+                        stageCountMetric.Track(stages.Count);
 
                         foreach (var stage in otherStages)
                         {
@@ -235,14 +260,17 @@ namespace NanoActor
                                         await _stageDirectory.UnregisterStage(localStage);
                                         _logger.LogDebug("Stage {0} removed", localStage, count);
                                         _missedPings.TryRemove(localStage, out _);
+
+                                        _metrics.TryRemove(localStage, out _);
                                     }
                                 }
                                 else
                                 {
-                                    var metric = _metrics.GetOrAdd(localStage, _telemetry.Metric($"Stage.Ping", new Dictionary<string, string>() {
-                                        {"FromStage",_ownAddress.StageId},
-                                        {"ToStage",localStage }
-                                    }));
+                                    var metric = _metrics.GetOrAdd(localStage,
+                                        _telemetry.Metric($"Stage.Ping", new Dictionary<string, string>() {
+                                            {"FromStage",_ownAddress.StageId},
+                                            {"ToStage",localStage }
+                                        }));
 
 
                                     metric.Track(pingResponse.Value.TotalMilliseconds);
@@ -269,14 +297,14 @@ namespace NanoActor
         public async Task ReceivedActorRequest(ActorRequest message, SocketAddress sourceAddress)
         {
 
+           
+
             if (_localStage == null || !_localStage.Enabled)
             {
                 //we are inside a client, no point on getting actor requests
                 return;
             }
-
-            
-
+                        
             
             if (_pausedActorMessageQueues.TryGetValue(string.Join(":", message.ActorInterface, message.ActorId), out var queue))
             {
@@ -285,13 +313,7 @@ namespace NanoActor
                 return;
             }
             
-            //if (_localStage.CanProcessMessage(message))
-            //{
-            //    await ProcessActorRequestLocally(message, sourceAddress);
-            //    return;
-            //}
-            //else
-            //{
+            
             var queryResult = await _actorDirectory.GetAddress(message.ActorInterface, message.ActorId);
 
                 if (queryResult.Found)

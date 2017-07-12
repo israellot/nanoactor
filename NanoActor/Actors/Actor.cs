@@ -78,6 +78,10 @@ namespace NanoActor
             _pubsub = pubsub;
         }
 
+        protected Int32 _queueCount;
+
+        public Int32 QueueCount { get { return _queueCount; } }
+
         internal async Task Run()
         {
             
@@ -111,11 +115,25 @@ namespace NanoActor
 
                 Task workTask = null;
 
-                using (var asyncLock = await _executionLock.LockAsync())
+                Interlocked.Increment(ref _queueCount);
+
+
                 {
-                    workTask = (Task)method.Invoke(this, arguments.ToArray());
-                    await workTask;
+                    var asyncLock = await _executionLock.LockAsync();
+                    try
+                    {
+                        workTask = (Task)method.Invoke(this, arguments.ToArray());
+                        await workTask;
+                    }
+                    finally
+                    {
+                        if (asyncLock != null)
+                            ((IDisposable)asyncLock).Dispose();
+                        Interlocked.Decrement(ref _queueCount);
+                    }
                 }
+
+                
                 
                 
                 if (!_returnPropertyCache.TryGetValue(key, out var resultProperty))
@@ -160,9 +178,10 @@ namespace NanoActor
            
         }
 
-        internal Task WaitIdle()
+        internal async Task WaitIdle()
         {
-            return Task.CompletedTask;
+            while (_queueCount > 0)
+                await Task.Delay(5);
         }
 
         protected async Task Publish<T>(string eventName, T data)
@@ -177,12 +196,16 @@ namespace NanoActor
 
         public void Dispose()
         {
-            foreach(var t in _timers)
+            SaveState().Wait();
+
+            foreach (var t in _timers)
             {
                 t.Stop();
             }
 
-            SaveState().Wait();
+            
         }
+
+        
     }
 }

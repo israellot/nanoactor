@@ -384,5 +384,31 @@ namespace NanoActor
             return Task.CompletedTask;
         }
 
+        public async Task Stop()
+        {
+            var instances = _actorInstances.Values.ToList();
+
+            var tasks = new List<Task>();
+
+            foreach(var i in instances)
+            {
+                var waitTask = Task.Run(async () => {
+                    try
+                    {
+                        await i.Instance.WaitIdle();
+                        i.Instance.Dispose();
+                    }
+                    catch { }
+                });
+
+                tasks.Add(waitTask);
+            }
+
+            await Task.WhenAll(tasks.ToArray());
+
+
+
+        }
+
     }
 }
