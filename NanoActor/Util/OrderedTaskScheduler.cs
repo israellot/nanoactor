@@ -22,7 +22,8 @@ namespace NanoActor.Util
         
         /// <summary>Whether the scheduler is currently processing work items.</summary>
         private int _delegatesQueuedOrRunning = 0; // protected by lock(_tasks)
-                       
+                
+         
                 
         /// <summary>
         /// Initializes an instance of the LimitedConcurrencyLevelTaskScheduler class with the
