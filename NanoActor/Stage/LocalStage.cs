@@ -58,6 +58,8 @@ namespace NanoActor
 
         MetricTracker _actorInstancesMetric;
 
+        MeterTracker _deactivatedInstancesMeter;
+
         PubSubManager _pubsub;
 
         public String StageGuid { get; private set; }
@@ -95,6 +97,8 @@ namespace NanoActor
 
             _actorInstancesMetric = _telemetry.Metric(
                 "Stage.ActiveActorInstances");
+
+            _deactivatedInstancesMeter = _telemetry.Meter("Stage.DeactivatedActorInstances", TimeSpan.FromSeconds(60));
         }
 
         public void Run()
@@ -127,11 +131,18 @@ namespace NanoActor
                         .ForAll(key => {
                             if (_actorInstances.TryGetValue(key, out var instance))
                             {
+#if !RELEASE
+                                if(now- instance.LastAccess > TimeSpan.FromMinutes(1))
+#else
                                 if(now- instance.LastAccess > TimeSpan.FromHours(1))
+#endif
                                 {
                                     _actorInstances.TryRemove(key, out _);
-                                     instance.Instance.Dispose();
                                     _logger.LogDebug("Deactivated instance for {0}. Actor Id : {1}. No activity", instance.ActorTypeName, instance.ActorId);
+                                    instance.Instance.Dispose();
+                                    instance = null;
+
+                                    _deactivatedInstancesMeter.Tick();
                                 }
                             }
                         });
