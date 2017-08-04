@@ -10,6 +10,8 @@ using System.Linq;
 using NanoActor.PubSub;
 using Microsoft.Extensions.Logging;
 using NanoActor.Telemetry;
+using Microsoft.Extensions.Options;
+using NanoActor.Options;
 
 namespace NanoActor
 {
@@ -62,11 +64,21 @@ namespace NanoActor
 
         PubSubManager _pubsub;
 
+        NanoServiceOptions _serviceOptions;
+
         public String StageGuid { get; private set; }
 
         public Boolean Enabled { get; set; } = false;
 
-        public LocalStage(IServiceProvider services,ITransportSerializer serializer, ITelemetry<LocalStage> telemetry, IActorDirectory actorDirectory, IStageDirectory stageDirectory,ILogger<LocalStage> logger, PubSubManager pubsub) {
+        public LocalStage(
+            IServiceProvider services,
+            ITransportSerializer serializer,
+            ITelemetry<LocalStage> telemetry,
+            IActorDirectory actorDirectory,
+            IStageDirectory stageDirectory,
+            ILogger<LocalStage> logger,
+            IOptions<NanoServiceOptions> serviceOptions,
+            PubSubManager pubsub) {
             _services = services;
 
             _actorDirectory = actorDirectory;
@@ -82,6 +94,7 @@ namespace NanoActor
             _logger = logger;
 
             _telemetry = telemetry;
+            _serviceOptions = serviceOptions.Value;
 
             var stageDefaultProperty = new Dictionary<string, string>
                     {
@@ -328,9 +341,9 @@ namespace NanoActor
 
             actorInstance.LastAccess = DateTimeOffset.UtcNow;
 
-            
 
-            var track = _telemetry.Dependency($"actor:{message.ActorInterface}", message.ActorMethodName);
+            var track = _serviceOptions.TrackActorExecutionDependencyCalls ?
+                _telemetry.Dependency($"actor:{message.ActorInterface}", message.ActorMethodName) : null;
 
             try
             {
@@ -339,8 +352,8 @@ namespace NanoActor
 
                 if (result is Exception)
                 {
+                    track?.End(false);
 
-                    track.End(false);
 
                     var response = new ActorResponse()
                     {
@@ -353,7 +366,9 @@ namespace NanoActor
                 }
                 else
                 {
-                    track.End(true);
+                    
+                    track?.End(true);
+
                     var response = new ActorResponse()
                     {
                         Success = true,
@@ -366,7 +381,8 @@ namespace NanoActor
             }
             catch(Exception ex)
             {
-                track.End(false);
+                
+                track?.End(false);
 
                 var response = new ActorResponse()
                 {

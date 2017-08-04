@@ -1,4 +1,6 @@
 ﻿using Castle.DynamicProxy;
+using Microsoft.Extensions.Options;
+using NanoActor.Options;
 using NanoActor.Telemetry;
 using System;
 using System.Collections.Concurrent;
@@ -23,15 +25,26 @@ namespace NanoActor.ActorProxy
 
         ITelemetry _telemetry;
 
+        NanoServiceOptions _serviceOptions;
+
         protected static ConcurrentDictionary<string, Func<byte[],object>> _deserializerAccessors = new ConcurrentDictionary<string, Func<byte[], object>>();
 
 
-        public RemoteActorMethodInterceptor(RemoteStageClient remoteClient, ITelemetry telemetry, ITransportSerializer serializer,TimeSpan? timeout=null, Boolean fireAndForget=false)
+        public RemoteActorMethodInterceptor(
+            RemoteStageClient remoteClient,
+            ITelemetry telemetry,
+            ITransportSerializer serializer,
+            IOptions<NanoServiceOptions> serviceOptions,
+            TimeSpan? timeout=null,
+            Boolean fireAndForget=false            
+            )
         {
             _remoteClient = remoteClient;
             _fireAndForget = fireAndForget;
             _serializer = serializer;
-            this._telemetry = telemetry;
+            _telemetry = telemetry;
+            _serviceOptions = serviceOptions.Value;
+
 
 #if !RELEASE
             _timeout = timeout??TimeSpan.FromMilliseconds(-1);
@@ -65,7 +78,9 @@ namespace NanoActor.ActorProxy
                         
             var task = Task.Run(() =>{
 
-                var tracker = _telemetry.Dependency($"proxy.actor:{message.ActorInterface}", message.ActorMethodName);
+
+                var tracker = _serviceOptions.TrackProxyDependencyCalls ?
+                    _telemetry.Dependency($"proxy.actor:{message.ActorInterface}", message.ActorMethodName) : null;
 
                 return _remoteClient.SendActorRequest(message, _timeout)
                 .ContinueWith((t) =>
@@ -73,7 +88,9 @@ namespace NanoActor.ActorProxy
                     
                     if (t.IsFaulted)
                     {
-                        tracker.End(false);
+                        tracker?.End(false);
+
+
                         if (t.Exception != null)
                         {
                             throw t.Exception;
@@ -83,12 +100,15 @@ namespace NanoActor.ActorProxy
                     var result = t.Result;
                     if (result!=null && !result.Success)
                     {
-                        tracker.End(false);
+                        tracker?.End(false);
+
                         if (result.Exception != null)
                             throw result.Exception;
                     }
 
-                    tracker.End(true);
+                    tracker?.End(true);
+
+
                 });
             });                
                
@@ -116,9 +136,7 @@ namespace NanoActor.ActorProxy
             {
                 arguments.Add(_serializer.Serialize(argument));
             }
-
-
-
+            
 
             var message = new ActorRequest()
             {
@@ -131,23 +149,27 @@ namespace NanoActor.ActorProxy
 
             var task = Task.Run(() =>
             {
-                var tracker = _telemetry.Dependency($"proxy.actor:{message.ActorInterface}", message.ActorMethodName);
+                var tracker = _serviceOptions.TrackProxyDependencyCalls ?
+                    _telemetry.Dependency($"proxy.actor:{message.ActorInterface}", message.ActorMethodName) : null;
 
                 return _remoteClient.SendActorRequest(message, _timeout)
                 .ContinueWith(t =>
-                {
-                    
+                {                    
 
                     if (_fireAndForget)
                     {
-                        tracker.End(true);
+                        tracker?.End(true);
+
+
                         return default(TResult);
                     }
                     else
                     {
                         if (t.IsFaulted)
                         {
-                            tracker.End(false);
+                           
+                            tracker?.End(false);
+
                             if (t.Exception != null)
                                 throw t.Exception;
                         }
@@ -156,12 +178,14 @@ namespace NanoActor.ActorProxy
 
                         if (!result.Success)
                         {
-                            tracker.End(false);
+                            tracker?.End(false);
+
                             if (result.Exception != null)
                                 throw result.Exception;
                         }
 
-                        tracker.End(true);
+                        
+                        tracker?.End(true);
 
 
                         var returnType = invocation.Method.ReturnType.GetGenericArguments()[0];

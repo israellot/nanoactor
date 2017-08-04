@@ -17,19 +17,16 @@ namespace NanoActor
     public class RemoteStageClient
     {
         IServiceProvider _services;
-
         IActorDirectory _actorDirectory;
         LocalStage _localStage;
         ISocketClient _socketClient;
         ITransportSerializer _serializer;
         IStageDirectory _stageDirectory;
-
         RemoteStageServer _stageServer;
-
         ITelemetry _telemetry;
+       
 
         ConcurrentDictionary<string, BufferBlock<ActorResponse>> _localResponseBuffer = new ConcurrentDictionary<string, BufferBlock<ActorResponse>>();
-
         ConcurrentDictionary<string, BufferBlock<ActorResponse>> _serverResponseBuffer = new ConcurrentDictionary<string, BufferBlock<ActorResponse>>();
         ConcurrentDictionary<string, SemaphoreSlim> _pingResponseBuffer = new ConcurrentDictionary<string, SemaphoreSlim>();
 

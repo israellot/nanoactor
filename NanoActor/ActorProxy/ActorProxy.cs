@@ -10,6 +10,8 @@ using System.Reflection.Emit;
 using System.Linq;
 using NanoActor.PubSub;
 using NanoActor.Telemetry;
+using Microsoft.Extensions.Options;
+using NanoActor.Options;
 
 namespace NanoActor.ActorProxy
 {
@@ -40,10 +42,17 @@ namespace NanoActor.ActorProxy
         public T GetProxy<T>(string id = null,TimeSpan? timeout=null,Boolean fireAndForget=false) where T : class
         {
             var telemetry = _services.GetRequiredService<ITelemetry<T>>();
+            var serviceOptions = _services.GetRequiredService<IOptions<NanoServiceOptions>>();
 
            var proxy = _proxyGenerator.CreateInterfaceProxyWithoutTarget<T>(
                 new ActorPropertyInterceptor(),
-                new RemoteActorMethodInterceptor(_services.GetRequiredService<RemoteStageClient>(), telemetry, _serializer,timeout, fireAndForget).ToInterceptor()
+                new RemoteActorMethodInterceptor(
+                    _services.GetRequiredService<RemoteStageClient>(), 
+                    telemetry, 
+                    _serializer,
+                    serviceOptions,
+                    timeout,
+                    fireAndForget).ToInterceptor()
                 );
 
 
