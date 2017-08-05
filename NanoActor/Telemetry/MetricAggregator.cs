@@ -105,7 +105,6 @@ namespace NanoActor.Telemetry
                     // Atomically snap the current aggregation:
                     MetricAggregator nextAggregator = new MetricAggregator(DateTimeOffset.UtcNow);
                     MetricAggregator prevAggregator = Interlocked.Exchange(ref _aggregator, nextAggregator);
-
                     
                     // Only send anything is at least one value was measured:
                     if (prevAggregator != null && prevAggregator.Count > 0)
@@ -119,17 +118,23 @@ namespace NanoActor.Telemetry
 
                         foreach (var sink in _sinks)
                         {
-                            sink.TrackMetric(
-                                   Name,
-                                   prevAggregator.Count,
-                                   prevAggregator.Sum,
-                                   prevAggregator.Min,
-                                   prevAggregator.Max,
-                                   prevAggregator.StandardDeviation,
-                                   aggPeriod,
-                                   prevAggregator.StartTimestamp,
-                                   _properties
-                                   );
+                            try
+                            {
+                                sink.TrackMetric(
+                                 Name,
+                                 prevAggregator.Count,
+                                 prevAggregator.Sum,
+                                 prevAggregator.Min,
+                                 prevAggregator.Max,
+                                 prevAggregator.StandardDeviation,
+                                 aggPeriod,
+                                 prevAggregator.StartTimestamp,
+                                 _properties
+                                 );
+                            }catch(Exception ex) {
+
+                            }
+                          
                         }
 
                        

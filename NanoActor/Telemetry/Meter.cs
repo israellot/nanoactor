@@ -145,24 +145,34 @@ namespace NanoActor.Telemetry
                     TimeSpan aggPeriod = nextAggregator.StartTimestamp - prevAggregator.StartTimestamp;
 
                     History.AddFirst(new MeterDataPoint(prevAggregator, aggPeriod));
-                    while (History.Count > _historyCount)
-                        History.RemoveLast();
-
-                    // Only send anything is at least one value was measured:
-                    if (prevAggregator != null)
+                    if (History.Count > _historyCount)
                     {
-                        
+                        for(var i =0;i< History.Count - _historyCount;i++)
+                            History.RemoveLast();
+                    }
+                       
+
+                    // Only send anything if at least one value was measured:
+                    if (prevAggregator != null)
+                    {                        
                         if (aggPeriod.TotalMilliseconds >0)
                         {
                             foreach (var sink in _sinks)
                             {
-                                sink.TrackMeter(
+                                try
+                                {
+                                    sink.TrackMeter(
                                    Name,
                                    prevAggregator.Count,
                                    aggPeriod,
                                    prevAggregator.StartTimestamp,
                                    _properties
                                    );
+                                }catch(Exception ex)
+                                {
+
+                                }
+                                
                             }
 
                         }

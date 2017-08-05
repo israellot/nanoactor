@@ -117,7 +117,6 @@ namespace NanoActor
         public void Run()
         {
             
-
             this.Enabled = true;
 
             LocalMonitorTask();
@@ -179,7 +178,6 @@ namespace NanoActor
 
                         //}
 
-                        
 
 
                     }
@@ -187,7 +185,6 @@ namespace NanoActor
                     {
                         _telemetry.Exception(ex);
                     }
-
 
                 }
 

@@ -180,8 +180,6 @@ namespace NanoActor.ClusterInstance
         {
             var stages = await _stageDirectory.GetAllStages();
 
-           
-
             foreach(var stage in stages)
             {
                 var pingResult = await _remoteClient.PingStage(stage);
