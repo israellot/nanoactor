@@ -135,18 +135,19 @@ namespace NanoActor
                 {
                     try
                     {
-                        await Task.Delay(TimeSpan.FromMinutes(5));
+                        await Task.Delay(TimeSpan.FromSeconds(30));
 
                         var now = DateTimeOffset.Now;
 
                         _actorInstances.Keys.AsParallel()
+                        .WithDegreeOfParallelism(4)
                         .ForAll(key => {
                             if (_actorInstances.TryGetValue(key, out var instance))
                             {
 #if !RELEASE
                                 if(now- instance.LastAccess > TimeSpan.FromMinutes(1))
 #else
-                                if(now- instance.LastAccess > TimeSpan.FromHours(1))
+                                if(now- instance.LastAccess > TimeSpan.FromSeconds(_serviceOptions.DefaultActorTTL) )
 #endif
                                 {
                                     _actorInstances.TryRemove(key, out _);
@@ -347,34 +348,16 @@ namespace NanoActor
               
                 var result = await actorInstance.Instance.Post(_serializer, message, timeout);
 
-                if (result is Exception)
+                track?.End(true);
+
+                var response = new ActorResponse()
                 {
-                    track?.End(false);
+                    Success = true,
+                    Response = _serializer.Serialize(result),
+                    Id = message.Id
+                };
 
-
-                    var response = new ActorResponse()
-                    {
-                        Success = false,
-                        Exception = (Exception)result,
-                        Id = message.Id
-                    };
-
-                    return response;
-                }
-                else
-                {
-                    
-                    track?.End(true);
-
-                    var response = new ActorResponse()
-                    {
-                        Success = true,
-                        Response = _serializer.Serialize(result),
-                        Id = message.Id
-                    };
-
-                    return response;
-                }
+                return response;
             }
             catch(Exception ex)
             {
@@ -384,12 +367,14 @@ namespace NanoActor
                 var response = new ActorResponse()
                 {
                     Success = false,
-                    Exception = (Exception)ex,
+                    //Exception = (Exception)ex,
                     Id = message.Id
-                };
+                };                
 
                 _actorInstances.TryRemove(actorInstanceKey, out var instance);
                 instance.Instance.Dispose();
+
+                _telemetry.Exception(ex,"ActorException");
 
                 return response;
             }

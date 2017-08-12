@@ -91,91 +91,78 @@ namespace NanoActor
 
         public async Task<object> Post(ITransportSerializer serializer,ActorRequest message,TimeSpan? timeout=null,CancellationToken? ct=null)
         {
-          
-            try
+
+            var key = $"{this.GetType().Name}.{message.ActorMethodName}";
+
+            if (!_methodCache.TryGetValue(key, out var method))
             {
+                method = this.GetType().GetMethod(message.ActorMethodName);
 
-                var key = $"{this.GetType().Name}.{message.ActorMethodName}";
+                _methodCache.TryAdd(key, method);
 
-                if (!_methodCache.TryGetValue(key, out var method))
+            }
+            var parameters = method.GetParameters();
+
+            List<object> arguments = new List<object>();
+            for (var i = 0; i < message.Arguments.Count; i++)
+            {
+                var parameterInfo = parameters[i];
+                arguments.Add(serializer.Deserialize(parameterInfo.ParameterType, message.Arguments[i]));
+            }
+
+            Task workTask = null;
+
+            Interlocked.Increment(ref _queueCount);
+
+
+            {
+                var asyncLock = await _executionLock.LockAsync();
+                try
                 {
-                    method = this.GetType().GetMethod(message.ActorMethodName);
-
-                    _methodCache.TryAdd(key, method);
-                   
+                    workTask = (Task)method.Invoke(this, arguments.ToArray());
+                    await workTask;
                 }
-                var parameters = method.GetParameters();
-
-                List<object> arguments = new List<object>();
-                for (var i = 0; i < message.Arguments.Count; i++)
+                finally
                 {
-                    var parameterInfo = parameters[i];
-                    arguments.Add(serializer.Deserialize(parameterInfo.ParameterType, message.Arguments[i]));
+                    if (asyncLock != null)
+                        ((IDisposable)asyncLock).Dispose();
+                    Interlocked.Decrement(ref _queueCount);
                 }
-
-                Task workTask = null;
-
-                Interlocked.Increment(ref _queueCount);
+            }
 
 
+
+
+            if (!_returnPropertyCache.TryGetValue(key, out var resultProperty))
+            {
+                if (method.ReturnType.IsConstructedGenericType)
                 {
-                    var asyncLock = await _executionLock.LockAsync();
-                    try
-                    {
-                        workTask = (Task)method.Invoke(this, arguments.ToArray());
-                        await workTask;
-                    }
-                    finally
-                    {
-                        if (asyncLock != null)
-                            ((IDisposable)asyncLock).Dispose();
-                        Interlocked.Decrement(ref _queueCount);
-                    }
-                }
+                    resultProperty = workTask.GetType().GetProperty("Result");
 
-                
-                
-                
-                if (!_returnPropertyCache.TryGetValue(key, out var resultProperty))
-                {
-                    if (method.ReturnType.IsConstructedGenericType)
-                    {
-                        resultProperty = workTask.GetType().GetProperty("Result");
+                    _returnPropertyCache.TryAdd(key, resultProperty);
 
-                        _returnPropertyCache.TryAdd(key, resultProperty);
 
-                        
-                    }
-                    else
-                    {
-                        _returnPropertyCache.TryAdd(key, null);
-                    }
-                }
-
-                if (resultProperty != null)
-                {
-                    var result = resultProperty.GetValue(workTask);
-
-                    return result;
                 }
                 else
                 {
-                    return null;
+                    _returnPropertyCache.TryAdd(key, null);
                 }
-
-
-               
-                
             }
-            catch (Exception ex)
+
+            if (resultProperty != null)
             {
-                if (ex.InnerException != null)
-                    return ex.InnerException;
-                else
-                    return ex;
+                var result = resultProperty.GetValue(workTask);
+
+                return result;
+            }
+            else
+            {
+                return null;
             }
 
-           
+
+
+
         }
 
         internal async Task WaitIdle()

@@ -14,7 +14,7 @@ namespace NanoActor.Telemetry
 
         void Event(string eventName, IDictionary<string, string> properties=null, IDictionary<string, double> metrics=null);
 
-        void Exception(Exception ex, IDictionary<string, string> properties = null, IDictionary<string, double> metrics = null);
+        void Exception(Exception ex, String description=null, IDictionary<string, string> properties = null, IDictionary<string, double> metrics = null);
 
         void SetProperties(IDictionary<string, string> properties);
     }

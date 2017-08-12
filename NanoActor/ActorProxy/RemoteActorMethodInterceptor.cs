@@ -28,8 +28,7 @@ namespace NanoActor.ActorProxy
         NanoServiceOptions _serviceOptions;
 
         protected static ConcurrentDictionary<string, Func<byte[],object>> _deserializerAccessors = new ConcurrentDictionary<string, Func<byte[], object>>();
-
-
+        
         public RemoteActorMethodInterceptor(
             RemoteStageClient remoteClient,
             ITelemetry telemetry,
@@ -49,7 +48,7 @@ namespace NanoActor.ActorProxy
 #if !RELEASE
             _timeout = timeout??TimeSpan.FromMilliseconds(-1);
 #else
-            _timeout = timeout ?? TimeSpan.FromSeconds(5);
+            _timeout = timeout ?? TimeSpan.FromSeconds(_serviceOptions.DefaultProxyTimeout);
 #endif
 
         }

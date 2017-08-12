@@ -73,12 +73,15 @@ namespace NanoActor.Telemetry
             }
         }
 
-        public virtual void Exception(Exception ex, IDictionary<string, string> properties = null, IDictionary<string, double> metrics = null)
+        public virtual void Exception(Exception ex, String description = null, IDictionary<string, string> properties = null, IDictionary<string, double> metrics = null)
         {
             properties = properties ?? new Dictionary<string, string>();
             foreach (var p in _properties)
                 if (!properties.ContainsKey(p.Key))
                     properties[p.Key] = p.Value;
+
+            if (!string.IsNullOrEmpty(description))
+                properties["Description"] = description;
 
             foreach (var s in _sinks)
             {

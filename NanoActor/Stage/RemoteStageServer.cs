@@ -413,9 +413,11 @@ namespace NanoActor
                 response = new ActorResponse()
                 {
                     Id = message.Id,
-                    Exception = ex,
+                    //Exception = ex,
                     Success = false
                 };
+
+                _telemetry.Exception(ex, "ProcessActorRequestLocally");
             }
 
             if (!message.FireAndForget)

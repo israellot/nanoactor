@@ -10,5 +10,8 @@ namespace NanoActor.Options
         public Boolean TrackProxyDependencyCalls { get; set; } = false;
         public Boolean TrackActorExecutionDependencyCalls { get; set; } = false;
 
+        public int DefaultActorTTL { get; set; } = 60 * 60 * 24;
+
+        public int DefaultProxyTimeout { get; set; } = 15;
     }
 }
