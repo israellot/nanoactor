@@ -64,7 +64,7 @@ namespace NanoActor
             _serializer = serializer;
             _logger = logger;
 
-            var cacheOptions = Microsoft.Extensions.Options.Options.Create<MemoryCacheOptions>(new MemoryCacheOptions() { CompactOnMemoryPressure=false });
+            var cacheOptions = Microsoft.Extensions.Options.Options.Create<MemoryCacheOptions>(new MemoryCacheOptions() {  });
             
             _memoryCache = new MemoryCache(cacheOptions);
 

@@ -181,18 +181,22 @@ namespace NanoActor.ActorProxy
 
                             if (result.Exception != null)
                                 throw result.Exception;
+                            else
+                                throw new Exception("Unexpected Error");
+
                         }
+                        else
+                        {
+                            tracker?.End(true);
 
-                        
-                        tracker?.End(true);
 
+                            var returnType = invocation.Method.ReturnType.GetGenericArguments()[0];
 
-                        var returnType = invocation.Method.ReturnType.GetGenericArguments()[0];
+                            var obj = _serializer.Deserialize(returnType, result.Response);
 
-                        var obj = _serializer.Deserialize(returnType,result.Response);
-                        
-
-                        return (TResult)(obj);
+                            return (TResult)(obj);
+                        }
+                       
                     }
 
                 });

@@ -20,9 +20,9 @@ namespace NanoActor.Telemetry
 
         }
 
-        public void Tick()
+        public void Tick(int add=1)
         {
-            meter.Value.Tick();
+            meter.Value.Tick(add);
         }
 
         public List<MeterDataPoint> GetHistory()

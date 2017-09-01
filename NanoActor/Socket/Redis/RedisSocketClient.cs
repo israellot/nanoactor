@@ -2,6 +2,8 @@
 using Microsoft.Extensions.Options;
 using NanoActor.Options;
 using NanoActor.Redis;
+using NanoActor.Telemetry;
+using Polly;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
@@ -24,6 +26,7 @@ namespace NanoActor.Socket.Redis
 
         ISubscriber _subscriber => _multiplexer.GetSubscriber();
 
+        Policy _redisPolicy = RedisRetry.RetryPolicy;
 
         IStageDirectory _stageDirectory;
 
@@ -35,14 +38,23 @@ namespace NanoActor.Socket.Redis
 
         String _guid;
 
+        ITelemetry _telemetry;
+
         BufferBlock<SocketData> _inputBuffer = new BufferBlock<SocketData>();
 
-        public RedisSocketClient(IServiceProvider services,ILogger<RedisSocketClient> logger, IStageDirectory stageDirectory, IOptions<NanoServiceOptions> serviceOptions, IOptions<RedisOptions> redisOptions)
+        public RedisSocketClient(
+            IServiceProvider services,
+            ITelemetry telemetry,
+            ILogger<RedisSocketClient> logger,
+            IStageDirectory stageDirectory,
+            IOptions<NanoServiceOptions> serviceOptions,
+            IOptions<RedisOptions> redisOptions)
         {
             this._services = services;
             this._serviceOptions = serviceOptions.Value;
             this._redisOptions = redisOptions.Value;
             this._stageDirectory = stageDirectory;
+            this._telemetry = telemetry;
 
             _logger = logger;
 
@@ -84,9 +96,7 @@ namespace NanoActor.Socket.Redis
 
         protected void Listen()
         {
-            
-
-           
+                                   
             try
             {
                 _subscriber.Subscribe(new RedisChannel(_inputChannel,RedisChannel.PatternMode.Pattern), (c, v) => {
@@ -102,7 +112,6 @@ namespace NanoActor.Socket.Redis
                 _logger.LogCritical("Failed to start listener");                              
             }
             
-
             
         }
 
@@ -112,8 +121,6 @@ namespace NanoActor.Socket.Redis
         }
 
         
-
-       
 
         public async Task SendRequest(SocketAddress address, byte[] data)
         {
@@ -139,14 +146,14 @@ namespace NanoActor.Socket.Redis
 
             try
             {
-                
-               var result= _subscriber.Publish(_outputChannel(address.Address), data, CommandFlags.FireAndForget | CommandFlags.HighPriority);
-                
+                _redisPolicy.Execute(() => {
+                    var result = _subscriber.Publish(_outputChannel(address.Address), data, CommandFlags.FireAndForget | CommandFlags.HighPriority);
+                });                
             }
             catch (Exception ex)
             {
-                _logger.LogError("Client Failed to send request");
-              
+                _telemetry.Exception(ex);
+                _logger.LogError("Client Failed to send request");              
             }
 
 

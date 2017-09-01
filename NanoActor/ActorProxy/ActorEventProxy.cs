@@ -37,7 +37,7 @@ namespace NanoActor.ActorProxy
                 {
                     try
                     {
-                        _pubsub.Cancel(s);
+                        _pubsub.Cancel(s).ConfigureAwait(false);
                     }
                     catch
                     {

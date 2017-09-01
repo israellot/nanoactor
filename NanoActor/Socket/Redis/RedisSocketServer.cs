@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using NanoActor.Options;
 using NanoActor.Redis;
 using NanoActor.Telemetry;
+using Polly;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
@@ -28,6 +29,8 @@ namespace NanoActor.Socket.Redis
         ISubscriber _subscriber => _multiplexer.GetSubscriber();
 
         ITelemetry _telemetry;
+
+        Policy _redisPolicy = RedisRetry.RetryPolicy;
 
         String _inputChannel => $"nano:{_serviceOptions.ServiceName}:{_guid}:*";
 
@@ -63,7 +66,6 @@ namespace NanoActor.Socket.Redis
         protected void MessageReceived(string channel,byte[] message)
         {
             
-
             var remoteGuid = channel.Split(':').Last();
 
             var socketData = new SocketData()
@@ -92,18 +94,26 @@ namespace NanoActor.Socket.Redis
                 try
                 {
                     _multiplexer = ConnectionMultiplexer.Connect(_redisOptions.ConnectionString);
-                    
+                   
 
                     _multiplexer.InternalError+= (sender,e)=> {
                         if (e.Exception != null)
                             _telemetry.Exception(e.Exception);
+                                                
                     };
 
                     _multiplexer.ConnectionFailed += (sender, e) => {
                         if (e.Exception != null)
                             _telemetry.Exception(e.Exception);                                                
                     };
-                                        
+
+                    _multiplexer.ConnectionRestored += (sender, e) =>
+                    {
+                        if (e.Exception != null)
+                            _telemetry.Exception(e.Exception);
+                    };
+
+                               
 
                     break;
                 }
@@ -155,8 +165,9 @@ namespace NanoActor.Socket.Redis
 
         public Task SendResponse(SocketAddress address, byte[] data)
         {
-            
-            _subscriber.Publish(_outputChannel(address.Address), data, CommandFlags.FireAndForget | CommandFlags.HighPriority );
+            _redisPolicy.Execute(() => {
+                _subscriber.Publish(_outputChannel(address.Address), data, CommandFlags.FireAndForget | CommandFlags.HighPriority);
+            });
 
             return Task.CompletedTask;
         }

@@ -16,12 +16,6 @@ using NanoActor.Options;
 namespace NanoActor
 {
 
-   public class LocalStageMetrics
-    {
-
-
-
-    }
 
     public class LocalActorInstance
     {
@@ -56,11 +50,11 @@ namespace NanoActor
 
         ITransportSerializer _serializer;
 
-        MeterTracker _reqSecondMeter;
+        volatile MeterTracker _reqSecondMeter;
 
-        MetricTracker _actorInstancesMetric;
+        volatile MetricTracker _actorInstancesMetric;
 
-        MeterTracker _deactivatedInstancesMeter;
+        volatile MeterTracker _deactivatedInstancesMeter;
 
         PubSubManager _pubsub;
 
@@ -144,11 +138,7 @@ namespace NanoActor
                         .ForAll(key => {
                             if (_actorInstances.TryGetValue(key, out var instance))
                             {
-#if !RELEASE
-                                if(now- instance.LastAccess > TimeSpan.FromMinutes(1))
-#else
-                                if(now- instance.LastAccess > TimeSpan.FromSeconds(_serviceOptions.DefaultActorTTL) )
-#endif
+                                if (now - instance.LastAccess > TimeSpan.FromSeconds(_serviceOptions.DefaultActorTTL))
                                 {
                                     _actorInstances.TryRemove(key, out _);
                                     _logger.LogDebug("Deactivated instance for {0}. Actor Id : {1}. No activity", instance.ActorTypeName, instance.ActorId);

@@ -102,8 +102,17 @@ namespace NanoActor.Telemetry
                     // Wait for end end of the aggregation period:
                     await Task.Delay(AggregationPeriod).ConfigureAwait(continueOnCapturedContext: false);
 
+                    if (_isDisposed)
+                        break;
+
                     // Atomically snap the current aggregation:
                     MetricAggregator nextAggregator = new MetricAggregator(DateTimeOffset.UtcNow);
+                    if (_aggregator == null)
+                    {
+                        _aggregator = nextAggregator;
+                        continue;
+                    }
+
                     MetricAggregator prevAggregator = Interlocked.Exchange(ref _aggregator, nextAggregator);
                     
                     // Only send anything is at least one value was measured:
@@ -132,7 +141,7 @@ namespace NanoActor.Telemetry
                                  _properties
                                  );
                             }catch(Exception ex) {
-
+                                
                             }
                           
                         }

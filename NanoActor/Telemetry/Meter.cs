@@ -61,14 +61,13 @@ namespace NanoActor.Telemetry
         public int Count { get { return _count; } }
 
         public MeterAggregator(DateTimeOffset startTimestamp)
-        {
-           
+        {           
             this.StartTimestamp = startTimestamp;
         }
 
-        public void Tick()
+        public void Tick(int add=1)
         {
-            Interlocked.Increment(ref _count);
+            Interlocked.Add(ref _count, add);
         }
     }   // internal class MetricAggregator
 
@@ -114,17 +113,15 @@ namespace NanoActor.Telemetry
             this._historyCount = historyKeep;
             this._properties = properties;
 
-
-
             Task.Run(this.AggregatorLoopAsync);
         }
 
-        public void Tick()
+        public void Tick(int add=1)
         {
             MeterAggregator currAggregator = _aggregator;
             if (currAggregator != null)
             {
-                currAggregator.Tick();
+                currAggregator.Tick(add);
             }
         }
 
@@ -137,37 +134,48 @@ namespace NanoActor.Telemetry
                     // Wait for end end of the aggregation period:
                     await Task.Delay(_aggregationPeriod).ConfigureAwait(continueOnCapturedContext: false);
 
+                    if (_isDisposed)
+                        break;
+
                     // Atomically snap the current aggregation:
                     MeterAggregator nextAggregator = new MeterAggregator(DateTimeOffset.UtcNow);
+
+                    if (_aggregator == null)
+                    {
+                        _aggregator = nextAggregator;
+                        continue;
+                    }
+
                     MeterAggregator prevAggregator = Interlocked.Exchange(ref _aggregator, nextAggregator);
 
-                    // Compute the actual aggregation period length:
-                    TimeSpan aggPeriod = nextAggregator.StartTimestamp - prevAggregator.StartTimestamp;
-
-                    History.AddFirst(new MeterDataPoint(prevAggregator, aggPeriod));
-                    if (History.Count > _historyCount)
-                    {
-                        for(var i =0;i< History.Count - _historyCount;i++)
-                            History.RemoveLast();
-                    }
-                       
 
                     // Only send anything if at least one value was measured:
                     if (prevAggregator != null)
-                    {                        
-                        if (aggPeriod.TotalMilliseconds >0)
+                    {
+                        // Compute the actual aggregation period length:
+                        TimeSpan aggPeriod = nextAggregator.StartTimestamp - prevAggregator.StartTimestamp;
+
+                        History.AddFirst(new MeterDataPoint(prevAggregator, aggPeriod));
+                        if (History.Count > _historyCount)
+                        {
+                            for (var i = 0; i < History.Count - _historyCount; i++)
+                                History.RemoveLast();
+                        }
+
+                        //don't report empty meters
+                        if (aggPeriod.TotalMilliseconds>0 && prevAggregator.Count>0)
                         {
                             foreach (var sink in _sinks)
                             {
                                 try
                                 {
                                     sink.TrackMeter(
-                                   Name,
-                                   prevAggregator.Count,
-                                   aggPeriod,
-                                   prevAggregator.StartTimestamp,
-                                   _properties
-                                   );
+                                       Name,
+                                       prevAggregator.Count,
+                                       aggPeriod,
+                                       prevAggregator.StartTimestamp,
+                                       _properties
+                                       );
                                 }catch(Exception ex)
                                 {
 
@@ -182,7 +190,7 @@ namespace NanoActor.Telemetry
                 }
                 catch (Exception ex)
                 {
-
+                    
                 }
             }
         }
