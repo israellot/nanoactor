@@ -4,6 +4,7 @@ using NanoActor.Telemetry;
 using Polly;
 using StackExchange.Redis;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -25,8 +26,9 @@ namespace NanoActor.PubSub
 
         Policy _redisPolicy = RedisRetry.RetryPolicy;
 
+        private object _sync = new object();
 
-        Dictionary<Action<string, byte[]>, Action<RedisChannel, RedisValue>> _actionMap = new Dictionary<Action<string, byte[]>, Action<RedisChannel, RedisValue>>();
+        ConcurrentDictionary<Action<string, byte[]>, Action<RedisChannel, RedisValue>> _actionMap = new ConcurrentDictionary<Action<string, byte[]>, Action<RedisChannel, RedisValue>>();
 
         public RedisPubSub(IServiceProvider services,RedisConnectionFactory connectionFactory, ITelemetry telemetry)
         {
@@ -67,8 +69,8 @@ namespace NanoActor.PubSub
                 handler(c, v);
             });
 
-            _actionMap[handler]= action;
-                        
+            _actionMap.AddOrUpdate(handler, action,(a,b) => action);
+
             try
             {
                 _redisPolicy.Execute(() => {

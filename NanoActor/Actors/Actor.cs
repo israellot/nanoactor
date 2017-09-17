@@ -51,8 +51,13 @@ namespace NanoActor
 
         protected ActorTimer RegisterTimer(Func<Task> callback,TimeSpan interval,int? runCount=null,Boolean autoStart=true)
         {
-            var timer = new ActorTimer(callback, interval, runCount, _timersCts.Token);
+
+            Func<Task> innerCallback = () => { return ExecuteInline(callback); };
+
+            var timer = new ActorTimer(innerCallback, interval, runCount, _timersCts.Token);
             _timers.Add(timer);
+
+            timer.OnFinish(async () => { _timers.Remove(timer); });
 
             if (autoStart) timer.Start();
 
@@ -89,6 +94,28 @@ namespace NanoActor
 
         }
 
+        
+        protected async Task ExecuteInline(Func<Task> task)
+        {
+            Task workTask = null;
+
+            Interlocked.Increment(ref _queueCount);
+            {
+                var asyncLock = await _executionLock.LockAsync();
+                try
+                {
+                    workTask = task.Invoke();
+                    await workTask;
+                }
+                finally
+                {
+                    if (asyncLock != null)
+                        ((IDisposable)asyncLock).Dispose();
+                    Interlocked.Decrement(ref _queueCount);
+                }
+            }
+        }
+
         public async Task<object> Post(ITransportSerializer serializer,ActorRequest message,TimeSpan? timeout=null,CancellationToken? ct=null)
         {
 
@@ -112,11 +139,11 @@ namespace NanoActor
 
             Task workTask = null;
 
+
             Interlocked.Increment(ref _queueCount);
 
-
             {
-                var asyncLock = await _executionLock.LockAsync();
+                var asyncLock = await _executionLock.LockAsync();                
                 try
                 {
                     workTask = (Task)method.Invoke(this, arguments.ToArray());
@@ -190,6 +217,11 @@ namespace NanoActor
                 t.Stop();
             }
 
+            try
+            {
+                if (!_timersCts.IsCancellationRequested) _timersCts.Cancel();
+            }
+            catch { }
             
         }
 

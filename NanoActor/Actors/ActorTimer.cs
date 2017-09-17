@@ -15,6 +15,7 @@ namespace NanoActor
 
         Func<Task> _task;
         Func<Exception, Task> _onErrorAction;
+        Func<Task> _onFinish;
 
         CancellationToken _ct;
 
@@ -42,6 +43,11 @@ namespace NanoActor
             _onErrorAction = action;
         }
 
+        public void OnFinish(Func<Task> action)
+        {
+            _onFinish = action;
+        }
+
         public void Start()
         {
             _disposed = false;
@@ -50,25 +56,34 @@ namespace NanoActor
 
                 while (true)
                 {
-                    if (_ct.IsCancellationRequested || _disposed)
-                        break;
-                   
-
-                    await Task.Delay(_period);
-
+                                     
                     Exception executionException = null;
                     try
                     {
+                        await Task.Delay(_period, _ct);
+
+                        if (_ct.IsCancellationRequested || _disposed)
+                            break;
+
                         await _task();
                     }
                     catch(Exception ex)
                     {
-                        executionException = ex;
-                       
+                        executionException = ex;                       
                     }
 
+                    if (_ct.IsCancellationRequested || _disposed)
+                        break;
+
                     if (executionException != null)
-                        _onErrorAction(executionException).ConfigureAwait(false);
+                    if (_onErrorAction != null)
+                    {
+                        try
+                        {
+                            _onErrorAction(executionException).ConfigureAwait(false);
+                        }
+                        catch { }
+                    }
 
 
                     _tickCount++;
@@ -76,6 +91,8 @@ namespace NanoActor
                     if (_runCount.HasValue && _tickCount >= _runCount.Value)
                         break;
                 }
+
+                _onFinish?.Invoke();
 
             });
 

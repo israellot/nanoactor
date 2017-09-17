@@ -24,7 +24,6 @@ namespace NanoActor.ActorProxy
 
         public async Task Watch<T>(string eventName,Action<ActorEvent<T>> handler)
         {
-
             var subscription = await _pubsub.Watch(_actorInterface, eventName, _actorId, handler);
             _subscriptions.Add(subscription);
         }
