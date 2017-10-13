@@ -75,7 +75,10 @@ namespace NanoActor
         
         public async Task<StageAddress> GetStageAddress(string stageId)
         {
-            StageAddress stageAddress;
+            StageAddress stageAddress = null;
+            if (stageId == null)
+                return null;
+
             if (!_memoryCache.TryGetValue(stageId,out stageAddress))
             {
                 var address = await _database.HashGetAsync($"stage-directory", stageId);

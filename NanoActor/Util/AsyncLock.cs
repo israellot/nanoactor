@@ -65,7 +65,7 @@ namespace NanoActor
                     _ => (IDisposable)new LockReleaser(this),
                     CancellationToken.None,
                     TaskContinuationOptions.ExecuteSynchronously,
-                    TaskScheduler.Default);
+                    TaskScheduler.Current);
             }
         }
 

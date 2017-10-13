@@ -127,11 +127,7 @@ namespace NanoActor
 
         public async Task RegisterActor(string actorTypeName, string actorId, string stageId)
         {
-            await _database.HashSetAsync("actor-directory", string.Join(":", actorTypeName, actorId), stageId);
-
-     
-
-            
+            await _database.HashSetAsync("actor-directory", string.Join(":", actorTypeName, actorId), stageId);            
         }
             
         public async Task UnregisterActor(string actorTypeName,string actorId, string stageId)

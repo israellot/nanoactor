@@ -163,7 +163,6 @@ namespace NanoActor
 
         public async Task<ActorResponse> SendRemoteActorRequest(ActorRequest request, TimeSpan? timeout = null)
         {
-
             var stageResponse = await _actorDirectory.GetAddress(request.ActorInterface, request.ActorId);
             var stageAddress = await _stageDirectory.GetStageAddress(stageResponse.StageId);
             return await SendRemoteActorRequest(stageAddress, request, timeout);

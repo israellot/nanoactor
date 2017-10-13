@@ -13,5 +13,7 @@ namespace NanoActor.Options
         public int DefaultActorTTL { get; set; } = 60 * 60 * 24;
 
         public int DefaultProxyTimeout { get; set; } = 15;
+
+        public int DefaultActorMethodTimeout { get; set; } = 15;
     }
 }

@@ -11,6 +11,8 @@ using NanoActor.PubSub;
 using NanoActor.ActorProxy;
 using System.Collections.Concurrent;
 using System.Threading.Tasks.Dataflow;
+using NanoActor.Options;
+using Microsoft.Extensions.Options;
 
 namespace NanoActor
 {
@@ -20,9 +22,7 @@ namespace NanoActor
     
     public abstract class Actor:IActor,IDisposable
     {
-
-       
-
+        
         PubSubManager _pubsub;
                 
         protected static readonly ConcurrentDictionary<string, MethodInfo> _methodCache = new ConcurrentDictionary<string, MethodInfo>();
@@ -44,9 +44,15 @@ namespace NanoActor
 
         AsyncLock _executionLock = new AsyncLock();
 
+        NanoServiceOptions _options;
+
         public Actor(IServiceProvider _serviceProvider)
         {
             this._serviceProvider = _serviceProvider;
+
+            var options = _serviceProvider.GetService<IOptions<NanoServiceOptions>>();
+
+            _options = options.Value ?? new NanoServiceOptions();
         }
 
         protected ActorTimer RegisterTimer(Func<Task> callback,TimeSpan interval,int? runCount=null,Boolean autoStart=true)
@@ -110,7 +116,7 @@ namespace NanoActor
                 finally
                 {
                     if (asyncLock != null)
-                        ((IDisposable)asyncLock).Dispose();
+                        asyncLock.Dispose();
                     Interlocked.Decrement(ref _queueCount);
                 }
             }
@@ -124,10 +130,21 @@ namespace NanoActor
             if (!_methodCache.TryGetValue(key, out var method))
             {
                 method = this.GetType().GetMethod(message.ActorMethodName);
-
+                                
                 _methodCache.TryAdd(key, method);
-
             }
+
+            //timeout attribute
+            var timeoutAttribute = method.GetCustomAttribute<MethodTimeoutAttribute>();
+            if (timeoutAttribute != null)
+            {
+                timeout = timeoutAttribute.Timeout;
+            }
+            else
+            {
+                timeout = timeout ?? TimeSpan.FromSeconds(_options.DefaultActorMethodTimeout);
+            }
+
             var parameters = method.GetParameters();
 
             List<object> arguments = new List<object>();
@@ -139,22 +156,48 @@ namespace NanoActor
 
             Task workTask = null;
 
-
             Interlocked.Increment(ref _queueCount);
-
             {
-                var asyncLock = await _executionLock.LockAsync();                
-                try
+
+                if (timeout.HasValue)
                 {
+                    var timeoutTask = Task.Delay(timeout.Value);
+
+                    //try to acquire lock
+                    var asyncLockTask = _executionLock.LockAsync();
+                    await Task.WhenAny(asyncLockTask, timeoutTask);
+
+                    if(timeoutTask.IsCompleted && !asyncLockTask.IsCompleted)
+                        throw new TimeoutException();
+
+                    var asyncLock = asyncLockTask.Result;
+
+                    //try to run method
                     workTask = (Task)method.Invoke(this, arguments.ToArray());
+                    await Task.WhenAny(workTask, timeoutTask);
+
+                    if (timeoutTask.IsCompleted && !workTask.IsCompleted)
+                        throw new TimeoutException();
+
+                    if (asyncLock != null)
+                        asyncLock.Dispose();
+                }
+                else
+                {
+                    var asyncLock = await _executionLock.LockAsync();
+
+                    workTask = (Task)method.Invoke(this, arguments.ToArray());
+
+                    await workTask;
+
+                    if (asyncLock != null)
+                        asyncLock.Dispose();
+
                     await workTask;
                 }
-                finally
-                {
-                    if (asyncLock != null)
-                        ((IDisposable)asyncLock).Dispose();
-                    Interlocked.Decrement(ref _queueCount);
-                }
+
+                
+                Interlocked.Decrement(ref _queueCount);
             }
 
 
@@ -226,5 +269,16 @@ namespace NanoActor
         }
 
         
+    }
+
+
+    public class MethodTimeoutAttribute:Attribute
+    {
+        public TimeSpan Timeout { get; private set; }
+
+        public MethodTimeoutAttribute(int timeoutSeconds)
+        {
+            Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+        }
     }
 }

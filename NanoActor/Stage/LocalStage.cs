@@ -364,6 +364,8 @@ namespace NanoActor
                 _actorInstances.TryRemove(actorInstanceKey, out var instance);
                 instance.Instance.Dispose();
 
+                await _actorDirectory.UnregisterActor(instance.ActorTypeName, instance.ActorId, this.StageGuid);
+
                 _telemetry.Exception(ex,"ActorException");
 
                 return response;
