@@ -4,6 +4,7 @@ using NanoActor.Telemetry;
 using Polly;
 using StackExchange.Redis;
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -26,9 +27,7 @@ namespace NanoActor.PubSub
 
         Policy _redisPolicy = RedisRetry.RetryPolicy;
 
-        private object _sync = new object();
-
-        ConcurrentDictionary<Action<string, byte[]>, Action<RedisChannel, RedisValue>> _actionMap = new ConcurrentDictionary<Action<string, byte[]>, Action<RedisChannel, RedisValue>>();
+        ConcurrentDictionary<SubscriptionHandler, Action<RedisChannel, RedisValue>> _actionMap = new ConcurrentDictionary<SubscriptionHandler, Action<RedisChannel, RedisValue>>();
 
         public RedisPubSub(IServiceProvider services,RedisConnectionFactory connectionFactory, ITelemetry telemetry)
         {
@@ -48,6 +47,7 @@ namespace NanoActor.PubSub
 
         public Task Publish(string channel, byte[] data)
         {
+            
             try
             {
                 _redisPolicy.Execute(() => {
@@ -62,11 +62,12 @@ namespace NanoActor.PubSub
 
             return Task.CompletedTask;
         }
-
-        public Task Subscribe(string channel, Action<string,byte[]> handler)
-        {
-            var action = new Action<RedisChannel, RedisValue>((c, v) => {
-                handler(c, v);
+        
+        public Task Subscribe(string channel, SubscriptionHandler handler)
+        {            
+            var action = new Action<RedisChannel, RedisValue>((c, v) => {                
+                byte[] bytes = (byte[])v;
+                handler(c,ref bytes);   
             });
 
             _actionMap.AddOrUpdate(handler, action,(a,b) => action);
@@ -86,9 +87,9 @@ namespace NanoActor.PubSub
             return Task.CompletedTask;
         }
 
-        public Task Unsubscribe(string channel, Action<string, byte[]> handler)
+        public Task Unsubscribe(string channel, SubscriptionHandler handler)
         {
-            if(_actionMap.TryGetValue(handler,out var action))
+            if(_actionMap.TryRemove(handler,out var action))
             {
                 try
                 {
@@ -101,7 +102,6 @@ namespace NanoActor.PubSub
                     _telemetry.Exception(ex);
                     throw;
                 }
-
             }
 
             return Task.CompletedTask;

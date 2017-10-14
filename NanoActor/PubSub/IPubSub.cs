@@ -11,10 +11,12 @@ namespace NanoActor.PubSub
         byte[] Data { get; set; }
     }
 
+    public delegate void SubscriptionHandler(string s, ref byte[] bytes);
+
     public interface IPubSub
-    {
-        Task Subscribe(string channel, Action<string,byte[]> handler);
-        Task Unsubscribe(string channel, Action<string, byte[]> handler);
+    {        
+        Task Subscribe(string channel, SubscriptionHandler handler);
+        Task Unsubscribe(string channel, SubscriptionHandler handler);
         Task Publish(string channel,byte[] data);
         
     }

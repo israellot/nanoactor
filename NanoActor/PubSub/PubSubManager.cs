@@ -12,7 +12,7 @@ namespace NanoActor.PubSub
     {
         public String Channel { get; set; }
 
-        public Action<string, byte[]> Handler { get; set; }
+        public SubscriptionHandler Handler { get; set; }
     }
 
     public class PubSubManager
@@ -59,8 +59,9 @@ namespace NanoActor.PubSub
         public async Task<string> Watch<T>(string actorInterface,string eventName,string actorId,Action<ActorEvent<T>> handler)
         {
             var channel = ActorEventChannel(actorInterface, eventName, actorId);
+                        
+            SubscriptionHandler action = (string c, ref byte[] data) => {
 
-            var action = new Action<string, byte[]>((c, data) => {
                 var e = new ActorEvent<T>()
                 {
                     ActorInterface = actorInterface,
@@ -70,7 +71,8 @@ namespace NanoActor.PubSub
                 };
 
                 handler(e);
-            });
+
+            };
 
             var guid = Guid.NewGuid().ToString();
 
@@ -79,6 +81,7 @@ namespace NanoActor.PubSub
             await _pubsub.Subscribe(channel, action);
 
             return guid;
+
         }
 
        
@@ -87,10 +90,8 @@ namespace NanoActor.PubSub
             if(_subscriptions.TryRemove(subscriptionId, out var subscription))
             {
                 await _pubsub.Unsubscribe(subscription.Channel, subscription.Handler);
-            }
-            
+            }            
         }
-
     }
 
  
