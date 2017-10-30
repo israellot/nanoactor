@@ -88,10 +88,7 @@ namespace NanoActor
                 _memoryCache.Set(key, address, TimeSpan.FromSeconds(5));
 
                 return address;
-
             }
-
-            
 
             
         }
