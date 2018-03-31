@@ -136,7 +136,6 @@ namespace NanoActor.ClusterInstance
             _configuration = _configurationBuilder.Build();
 
             _serviceCollection.Configure<NanoServiceOptions>(_configuration.GetSection("ServiceOptions"));
-            _serviceCollection.Configure<TcpOptions>(_configuration.GetSection("TcpOptions"));
            
 
         }

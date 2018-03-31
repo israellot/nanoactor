@@ -25,6 +25,8 @@ namespace NanoActor
 
         [MessagePack.Key(4)]
         public byte[] Response { get; set; }
+
+        
     }
 
     

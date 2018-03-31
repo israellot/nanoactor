@@ -14,33 +14,7 @@ using Microsoft.Extensions.Logging;
 
 namespace NanoActor
 {
-
-    public class RedisStageAddress
-    {
-        public String StageGuid { get; set; }
-
-        public Int32 LastPing { get; set; }
-
-        public Boolean Live { get; set; }
-
-        public override string ToString()
-        {
-            return string.Join(",", this.StageGuid, this.LastPing, this.Live?"1":"0");
-        }
-
-        public RedisStageAddress() { }
-
-        public RedisStageAddress(string s)
-        {
-            var split = s.Split(',');
-
-            StageGuid = split[0];
-            LastPing = Int32.Parse(split[1]);
-            Live = split[2] == "1";
-        }
-
-    }
-
+       
     public class RedisStageDirectory : IStageDirectory
     {
         RedisConnectionFactory _connectionFactory;
@@ -57,6 +31,10 @@ namespace NanoActor
 
         IDatabase _database => _databaseLazy.Value;
 
+        String _stageDirectoryKey = "stage-directory";
+
+        Task _updateTask;
+
         public RedisStageDirectory(RedisConnectionFactory connectionFactory,ILogger<RedisStageDirectory> logger, IOptions<NanoServiceOptions> serviceOptions,ITransportSerializer serializer)
         {
             _connectionFactory = connectionFactory;
@@ -71,57 +49,47 @@ namespace NanoActor
             _databaseLazy = new Lazy<IDatabase>(() => {
                 return _connectionFactory.GetDatabase().WithKeyPrefix($"{_serviceOptions.ServiceName}");
             });
+
+            _updateTask = Task.Run(async () => {
+                while (true)
+                {
+                    try
+                    {
+                        await GetAllStages(true);
+                        await Task.Delay(2);
+                    }
+                    catch{ }
+                }
+                
+            });
         }
-        
-        public async Task<StageAddress> GetStageAddress(string stageId)
+
+        public async Task<Boolean> RegisterStage(string stageId)
         {
-            StageAddress stageAddress = null;
-            if (stageId == null)
-                return null;
 
-            if (!_memoryCache.TryGetValue(stageId,out stageAddress))
+            try
             {
-                var address = await _database.HashGetAsync($"stage-directory", stageId);
-
-                stageAddress = _serializer.Deserialize<StageAddress>(address);
-
-                if(stageAddress != null)
-                    _memoryCache.Set(stageId, stageAddress,TimeSpan.FromSeconds(4));
-            }
-            else
+                await _database.SetAddAsync(_stageDirectoryKey, stageId);
+            }catch(RedisException e)
             {
-
+                await _database.KeyDeleteAsync(_stageDirectoryKey);
+                await _database.SetAddAsync(_stageDirectoryKey, stageId);
             }
 
-            return stageAddress;
+            return true;
         }
 
-        public async Task<StageAddress> RegisterStage(string stageId, SocketAddress address)
-        {
-            var stageAddress = new StageAddress()
-            {
-                SocketAddress = address,
-                StageId = stageId
-            };
-
-            //var redisAddress = new RedisStageAddress() { StageGuid = stageId, Live = true, LastPing=datet };
-
-            await _database.HashSetAsync($"stage-directory", stageId, _serializer.Serialize(stageAddress));
-
-            return stageAddress;
-        }
-
-        public async Task<List<string>> GetAllStages()
+        public async Task<List<string>> GetAllStages(Boolean forceUpdate=false)
         {
             List<string> stages;
 
-            if (_memoryCache.TryGetValue("all",out stages))
+            if (!forceUpdate && _memoryCache.TryGetValue("all",out stages))
             {
                 return stages;
             }
             else
             {
-                var stagesValues = await _database.HashKeysAsync($"stage-directory");
+                var stagesValues = await _database.SetMembersAsync(_stageDirectoryKey);
 
                 stages= stagesValues.Select(s => (string)s).ToList();
 
@@ -134,7 +102,13 @@ namespace NanoActor
 
         public async Task UnregisterStage(string stageId)
         {
-            await _database.HashDeleteAsync("stage-directory", stageId);
+            await _database.SetRemoveAsync(_stageDirectoryKey, stageId);
+        }
+
+        public async Task<bool> IsLive(string stageId)
+        {
+            var allStages = await this.GetAllStages();
+            return allStages.Contains(stageId);
         }
     }
 }

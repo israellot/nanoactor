@@ -12,6 +12,7 @@ using NanoActor.PubSub;
 using NanoActor.Telemetry;
 using Microsoft.Extensions.Options;
 using NanoActor.Options;
+using System.Collections.Concurrent;
 
 namespace NanoActor.ActorProxy
 {
@@ -29,6 +30,8 @@ namespace NanoActor.ActorProxy
 
         ITransportSerializer _serializer;
 
+      
+
         public ProxyFactory(IServiceProvider services,ITelemetry<ProxyFactory> telemetry, PubSubManager pubsub,ITransportSerializer serializer)
         {
             _pubsub = pubsub;
@@ -44,24 +47,26 @@ namespace NanoActor.ActorProxy
             var telemetry = _services.GetRequiredService<ITelemetry<T>>();
             var serviceOptions = _services.GetRequiredService<IOptions<NanoServiceOptions>>();
 
-           var proxy = _proxyGenerator.CreateInterfaceProxyWithoutTarget<T>(
-                new ActorPropertyInterceptor(),
-                new RemoteActorMethodInterceptor(
-                    _services.GetRequiredService<RemoteStageClient>(), 
-                    telemetry, 
-                    _serializer,
-                    serviceOptions,
-                    timeout,
-                    fireAndForget).ToInterceptor()
-                );
+           
 
+            var _remoteInterceptor = new RemoteActorMethodInterceptor(
+                   _services.GetRequiredService<RemoteStageClient>(),
+                   telemetry,
+                   _serializer,
+                   serviceOptions,
+                   timeout,
+                   fireAndForget).ToInterceptor();
+
+            var proxy = _proxyGenerator.CreateInterfaceProxyWithoutTarget<T>(
+                 new ActorPropertyInterceptor(),
+               _remoteInterceptor
+                );
 
             id = id ?? string.Empty;
 
             var p = proxy as IActor;
             if (p != null)
                 p.Id = id;
-
 
             return proxy;
         }
@@ -77,19 +82,7 @@ namespace NanoActor.ActorProxy
         }
 
 
-        static class RemoteProxyCache<T> where T:class
-        {
-            private static T _instance;
-
-            public static T GetOrAdd(Func<T> createFunction)
-            {
-                if (_instance == null)
-                    _instance = createFunction();                
-
-                return _instance;
-            }
-            
-        }
+        
 
     }
 }

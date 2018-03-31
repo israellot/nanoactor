@@ -7,7 +7,7 @@ namespace NanoActor
 {
     public interface ISocketClient
     {
-        Task SendRequest(SocketAddress address, byte[] data);
+        Task SendRequest(string stageId, byte[] data);
 
         Task<SocketData> Receive();
     }

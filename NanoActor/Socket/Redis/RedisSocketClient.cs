@@ -33,8 +33,8 @@ namespace NanoActor.Socket.Redis
         ILogger _logger;
 
         String _inputChannel => $"nano:{_serviceOptions.ServiceName}:{_guid}:*";
-
         String _outputChannel(string guid) => $"nano:{_serviceOptions.ServiceName}:{guid}:{_guid}";
+
 
         String _guid;
 
@@ -58,34 +58,35 @@ namespace NanoActor.Socket.Redis
 
             _logger = logger;
 
-            _guid = Guid.NewGuid().ToString().Substring(0, 8);
+            _guid = Guid.NewGuid().ToString();
 
-            _multiplexer = ConnectionMultiplexer.Connect(_redisOptions.ConnectionString);
-            _multiplexer.PreserveAsyncOrder = false;
+            ConfigurationOptions config = ConfigurationOptions.Parse(_redisOptions.ConnectionString);
+            config.ConnectTimeout = 10000;
+            config.ConnectRetry = 15;
+            config.ReconnectRetryPolicy = new LinearRetry(5000);
+            config.SyncTimeout = 5000;
+            config.ResponseTimeout = 10000;
             
+
+            _multiplexer = ConnectionMultiplexer.Connect(config);
+            _multiplexer.PreserveAsyncOrder = false;
 
             _logger.LogInformation($"Client connected to Redis instance: {_multiplexer.IsConnected}");
-
-            
 
             Listen();
         }
 
+
+ 
+
         protected void MessageReceived(string channel,byte[] message)
         {
-
-            
 
             var remoteGuid = channel.Split(':').Last();
 
             var socketData = new SocketData()
             {
-                Address = new SocketAddress()
-                {
-                    Address = remoteGuid,
-                    Scheme = "redis",
-                    StageId=remoteGuid
-                },
+                StageId= remoteGuid,
                 Data = message
             };
 
@@ -120,24 +121,19 @@ namespace NanoActor.Socket.Redis
             return await _inputBuffer.ReceiveAsync();
         }
 
-        
-
-        public async Task SendRequest(SocketAddress address, byte[] data)
+        public async Task SendRequest(string stageId, byte[] data)
         {
-                        
-            if (address==null || address.Address == null)
+            
+
+            if (String.IsNullOrEmpty(stageId))
             {
                 var stages = await _stageDirectory.GetAllStages();
 
                 //shuffle
-                var stageId = stages.OrderBy(s => Guid.NewGuid()).FirstOrDefault();
-
-                address = (await _stageDirectory.GetStageAddress(stageId))?.SocketAddress;
-
-
+                stageId = stages.OrderBy(s => Guid.NewGuid()).FirstOrDefault();
             }
 
-            if (address == null)
+            if (String.IsNullOrEmpty(stageId))
             {
                 _logger.LogError("No live stage to connect to");
 
@@ -147,7 +143,7 @@ namespace NanoActor.Socket.Redis
             try
             {
                 _redisPolicy.Execute(() => {
-                    var result = _subscriber.Publish(_outputChannel(address.Address), data, CommandFlags.FireAndForget | CommandFlags.HighPriority);
+                    var result = _subscriber.Publish(_outputChannel(stageId), data, CommandFlags.FireAndForget | CommandFlags.HighPriority);
                 });                
             }
             catch (Exception ex)

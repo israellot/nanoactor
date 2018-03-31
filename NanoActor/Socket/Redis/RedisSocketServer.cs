@@ -58,8 +58,6 @@ namespace NanoActor.Socket.Redis
 
             _logger = logger;
 
-            _guid = Guid.NewGuid().ToString().Substring(0, 8);
-
            
         }
 
@@ -70,12 +68,7 @@ namespace NanoActor.Socket.Redis
 
             var socketData = new SocketData()
             {
-                Address = new SocketAddress()
-                {
-                    Address = remoteGuid,
-                    Scheme = "redis",
-                    StageId=remoteGuid
-                },
+               StageId= remoteGuid,
                 Data = message
             };
 
@@ -85,7 +78,7 @@ namespace NanoActor.Socket.Redis
 
         
 
-        public async Task<SocketAddress> Listen()
+        public async Task<Boolean> Listen()
         {
 
 
@@ -93,8 +86,15 @@ namespace NanoActor.Socket.Redis
             {
                 try
                 {
-                    _multiplexer = ConnectionMultiplexer.Connect(_redisOptions.ConnectionString);
-                   
+                    ConfigurationOptions config = ConfigurationOptions.Parse(_redisOptions.ConnectionString);
+                    config.ConnectTimeout = 10000;
+                    config.ConnectRetry = 15;
+                    config.ReconnectRetryPolicy = new LinearRetry(5000);
+                    config.SyncTimeout = 5000;
+                    config.ResponseTimeout = 10000;
+
+                    _multiplexer = ConnectionMultiplexer.Connect(config);
+                    
 
                     _multiplexer.InternalError+= (sender,e)=> {
                         if (e.Exception != null)
@@ -126,8 +126,8 @@ namespace NanoActor.Socket.Redis
             }
 
             _multiplexer.PreserveAsyncOrder = false;
-            
-            _guid = _localStage.StageGuid.Substring(0, 8);
+
+            _guid = _localStage.StageGuid;
 
           
             try
@@ -144,16 +144,8 @@ namespace NanoActor.Socket.Redis
                 _telemetry.Exception(ex);
                 _logger.LogCritical("Failed to start listener");
             }
-
-            
-
-            return new SocketAddress()
-            {
-                Address = _guid,
-                IsStage = true,
-                Scheme = "redis",
-                StageId= _localStage.StageGuid
-            };
+                        
+            return true;
         }
 
        
@@ -163,10 +155,10 @@ namespace NanoActor.Socket.Redis
             return await _inputBuffer.ReceiveAsync();
         }
 
-        public Task SendResponse(SocketAddress address, byte[] data)
+        public Task SendResponse(string stageId, byte[] data)
         {
             _redisPolicy.Execute(() => {
-                _subscriber.Publish(_outputChannel(address.Address), data, CommandFlags.FireAndForget | CommandFlags.HighPriority);
+                _subscriber.Publish(_outputChannel(stageId), data, CommandFlags.FireAndForget | CommandFlags.HighPriority);
             });
 
             return Task.CompletedTask;

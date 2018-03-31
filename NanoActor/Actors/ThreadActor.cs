@@ -50,6 +50,9 @@ namespace NanoActor
 
         IServiceProvider _serviceProvider;
 
+        public event EventHandler DeactivateRequested;
+
+
 
         public ThreadActor(IServiceProvider _serviceProvider)
         {

@@ -33,6 +33,8 @@ namespace NanoActor
         Lazy<RedisScripts> _scriptsLazy;
         RedisScripts _scripts => _scriptsLazy.Value;
 
+        string _actorDirectoryKey = "actor-directory";
+
         String StageAddress(string actorId) => $"actor:{actorId}";
 
         public RedisActorDirectory(RedisConnectionFactory connectionFactory, IStageDirectory stageDirectory, IOptions<NanoServiceOptions> serviceOptions, ITransportSerializer serializer)
@@ -65,7 +67,7 @@ namespace NanoActor
             }
             else
             {
-                var stageId = await _database.HashGetAsync("actor-directory",key, CommandFlags.HighPriority);
+                var stageId = await _database.HashGetAsync(_actorDirectoryKey, key, CommandFlags.HighPriority);
 
                 if (stageId == RedisValue.Null)
                 {
@@ -75,11 +77,11 @@ namespace NanoActor
                     if (stageId == RedisValue.Null)
                         throw new Exception("No live stage to connect to");
 
-                    var updated = await _database.HashSetAsync("actor-directory", key, stageId, When.NotExists);
+                    var updated = await _database.HashSetAsync(_actorDirectoryKey, key, stageId, When.NotExists);
 
                     if (!updated)
                     {
-                        stageId = await _database.HashGetAsync("actor-directory", key);
+                        stageId = await _database.HashGetAsync(_actorDirectoryKey, key);
                     }
                 }
 
@@ -111,25 +113,41 @@ namespace NanoActor
             if (stageId == RedisValue.Null)
                 throw new Exception("No live stage to connect to");
 
-            var updated = await _scripts.HashUpdateIfEqual("actor-directory", key, oldStageId, stageId);
+            var updated = await _scripts.HashUpdateIfEqual(_actorDirectoryKey, key, oldStageId, stageId);
 
             await Refresh(actorTypeName, actorId);
 
             if (updated)
                 return stageId;
             else
-                return await _database.HashGetAsync("actor-directory", key);
+                return await _database.HashGetAsync(_actorDirectoryKey, key);
 
         }
 
         public async Task RegisterActor(string actorTypeName, string actorId, string stageId)
         {
-            await _database.HashSetAsync("actor-directory", string.Join(":", actorTypeName, actorId), stageId);            
+            await _database.HashSetAsync(_actorDirectoryKey, string.Join(":", actorTypeName, actorId), stageId);            
+        }
+
+        public async Task RemoveStage(string stageId)
+        {
+            var all = await _database.HashGetAllAsync(_actorDirectoryKey);
+
+            var liveStages = await _stageDirectory.GetAllStages(true);
+
+            foreach(var entry in all)
+            {
+                var compareStageId = (string)entry.Value;
+                if(compareStageId == stageId || !liveStages.Contains(compareStageId))
+                {
+                    await _scripts.HashDeleteIfEqual(_actorDirectoryKey, entry.Name, entry.Value);
+                }
+            }
         }
             
         public async Task UnregisterActor(string actorTypeName,string actorId, string stageId)
         {
-            var deleted = await _scripts.HashDeleteIfEqual("actor-directory", string.Join(":", actorTypeName, actorId), stageId);
+            var deleted = await _scripts.HashDeleteIfEqual(_actorDirectoryKey, string.Join(":", actorTypeName, actorId), stageId);
                         
         }
     }

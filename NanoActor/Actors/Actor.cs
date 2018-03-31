@@ -13,6 +13,7 @@ using System.Collections.Concurrent;
 using System.Threading.Tasks.Dataflow;
 using NanoActor.Options;
 using Microsoft.Extensions.Options;
+using NanoActor.Telemetry;
 
 namespace NanoActor
 {
@@ -46,24 +47,50 @@ namespace NanoActor
 
         NanoServiceOptions _options;
 
+        ITelemetry _telemetry;
+
+        public event EventHandler DeactivateRequested;
+
         public Actor(IServiceProvider _serviceProvider)
         {
             this._serviceProvider = _serviceProvider;
 
             var options = _serviceProvider.GetService<IOptions<NanoServiceOptions>>();
 
+            _telemetry = _serviceProvider.GetService<ITelemetry>();
+
             _options = options.Value ?? new NanoServiceOptions();
         }
 
-        protected ActorTimer RegisterTimer(Func<Task> callback,TimeSpan interval,int? runCount=null,Boolean autoStart=true)
+        protected virtual void DeactivateRequest()
         {
+            EventArgs e = new EventArgs();
 
-            Func<Task> innerCallback = () => { return ExecuteInline(callback); };
+            EventHandler handler = DeactivateRequested;
+            if (handler != null)
+            {
+                handler(this, e);
+            }
+        }
+
+        protected ActorTimer RegisterTimer(Func<Task> callback,TimeSpan interval,int? runCount=null,Boolean autoStart=true,Boolean sync=true)
+        {
+            Func<Task> innerCallback;
+            if (sync)
+            {
+                innerCallback = () => { return QueueExecuteInline(callback); };
+            }
+            else
+            {
+                innerCallback = () => { return ExecuteInline(callback); };
+            }            
 
             var timer = new ActorTimer(innerCallback, interval, runCount, _timersCts.Token);
             _timers.Add(timer);
 
             timer.OnFinish(async () => { _timers.Remove(timer); });
+
+            timer.OnError(async (ex) => { _telemetry.Exception(ex);  });
 
             if (autoStart) timer.Start();
 
@@ -102,6 +129,14 @@ namespace NanoActor
 
         
         protected async Task ExecuteInline(Func<Task> task)
+        {
+            Task workTask = null;
+
+            workTask = task.Invoke();
+            await workTask;
+        }
+
+        protected async Task QueueExecuteInline(Func<Task> task)
         {
             Task workTask = null;
 
@@ -148,56 +183,73 @@ namespace NanoActor
             var parameters = method.GetParameters();
 
             List<object> arguments = new List<object>();
-            for (var i = 0; i < message.Arguments.Count; i++)
+            for (var i = 0; i < parameters.Length; i++)
             {
-                var parameterInfo = parameters[i];
-                arguments.Add(serializer.Deserialize(parameterInfo.ParameterType, message.Arguments[i]));
+                var parameterInfo = parameters[i];     
+                if(message.Arguments.Count > i)
+                {
+                    arguments.Add(serializer.Deserialize(parameterInfo.ParameterType, message.Arguments[i]));
+                }
+                else
+                {
+                    arguments.Add(Type.Missing);
+                }
             }
 
             Task workTask = null;
 
-            Interlocked.Increment(ref _queueCount);
+            var sync = method.GetCustomAttribute<AllowParallel>(true) == null;
+
+            if (sync)
             {
-
-                if (timeout.HasValue)
+                Interlocked.Increment(ref _queueCount);
                 {
-                    var timeoutTask = Task.Delay(timeout.Value);
 
-                    //try to acquire lock
-                    var asyncLockTask = _executionLock.LockAsync();
-                    await Task.WhenAny(asyncLockTask, timeoutTask);
+                    if (timeout.HasValue)
+                    {
+                        var timeoutTask = Task.Delay(timeout.Value);
 
-                    if(timeoutTask.IsCompleted && !asyncLockTask.IsCompleted)
-                        throw new TimeoutException();
+                        //try to acquire lock
+                        var asyncLockTask = _executionLock.LockAsync();
+                        await Task.WhenAny(asyncLockTask, timeoutTask);
 
-                    var asyncLock = asyncLockTask.Result;
+                        if (timeoutTask.IsCompleted && !asyncLockTask.IsCompleted)
+                            throw new TimeoutException();
 
-                    //try to run method
-                    workTask = (Task)method.Invoke(this, arguments.ToArray());
-                    await Task.WhenAny(workTask, timeoutTask);
+                        var asyncLock = asyncLockTask.Result;
 
-                    if (timeoutTask.IsCompleted && !workTask.IsCompleted)
-                        throw new TimeoutException();
+                        //try to run method
+                        workTask = (Task)method.Invoke(this, arguments.ToArray());
+                        await Task.WhenAny(workTask, timeoutTask);
 
-                    if (asyncLock != null)
-                        asyncLock.Dispose();
+                        if (timeoutTask.IsCompleted && !workTask.IsCompleted)
+                            throw new TimeoutException();
+
+                        if (asyncLock != null)
+                            asyncLock.Dispose();
+                    }
+                    else
+                    {
+                        var asyncLock = await _executionLock.LockAsync();
+
+                        workTask = (Task)method.Invoke(this, arguments.ToArray());
+
+                        await workTask;
+
+                        if (asyncLock != null)
+                            asyncLock.Dispose();
+
+                        
+                    }
+
+
+                    Interlocked.Decrement(ref _queueCount);
                 }
-                else
-                {
-                    var asyncLock = await _executionLock.LockAsync();
+            }
+            else
+            {
+                workTask = (Task)method.Invoke(this, arguments.ToArray());
 
-                    workTask = (Task)method.Invoke(this, arguments.ToArray());
-
-                    await workTask;
-
-                    if (asyncLock != null)
-                        asyncLock.Dispose();
-
-                    await workTask;
-                }
-
-                
-                Interlocked.Decrement(ref _queueCount);
             }
 
 

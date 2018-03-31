@@ -15,6 +15,7 @@ namespace NanoActor
         MethodInfo _genericSerializer;
         MethodInfo _genericDeserializer;
 
+
         public MsgPackTransportSerializer()
         {
 
@@ -25,6 +26,8 @@ namespace NanoActor
             _genericDeserializer = typeof(MsgPackTransportSerializer)
               .GetMethods()
               .Single(m => m.Name == "Deserialize" && m.IsGenericMethodDefinition);
+
+            
         }
 
         public T Deserialize<T>(byte[] data)
@@ -33,11 +36,19 @@ namespace NanoActor
                 return default(T);
             try
             {
-                return MessagePackSerializer.Deserialize<T>(data, CustomCompositeResolver.Instance);
+                return LZ4MessagePackSerializer.Deserialize<T>(data, CustomCompositeResolver.Instance);
             }
             catch(Exception ex)
             {
-                return default(T);
+                try
+                {
+                    return MessagePackSerializer.Deserialize<T>(data, CustomCompositeResolver.Instance);
+                }
+                catch
+                {
+                    return default(T);
+                }
+
             }
             
         }
@@ -55,8 +66,9 @@ namespace NanoActor
         public byte[] Serialize<T>(T o)
         {
             try
-            {
-                return MessagePackSerializer.Serialize(o, CustomCompositeResolver.Instance);
+            {                
+                return LZ4MessagePackSerializer.Serialize(o, CustomCompositeResolver.Instance);
+                
             }
             catch(Exception ex)
             {
@@ -68,7 +80,7 @@ namespace NanoActor
         public byte[] Serialize(object o)
         {
             if (o == null)
-                return MessagePackSerializer.Serialize<Object>(null);
+                return LZ4MessagePackSerializer.Serialize<Object>(null);
 
             var methodInfo = _genericSerializer.MakeGenericMethod(o.GetType());
 

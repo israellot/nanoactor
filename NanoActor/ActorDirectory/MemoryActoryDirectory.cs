@@ -74,5 +74,10 @@ namespace NanoActor.Directory
         {
             throw new NotImplementedException();
         }
+
+        public Task RemoveStage(string stageId)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

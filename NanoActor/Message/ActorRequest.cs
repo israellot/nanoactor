@@ -32,6 +32,9 @@ namespace NanoActor
         [MessagePack.Key(6)]
         public Boolean FromClient { get; set; }
 
+        [MessagePack.Key(7)]
+        public Boolean WorkerActor { get; set; }
+
         public ActorRequest() {
             this.Id = Guid.NewGuid();
             this.ActorId = String.Empty;

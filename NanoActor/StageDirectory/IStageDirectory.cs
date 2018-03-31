@@ -7,14 +7,14 @@ namespace NanoActor
 {
     public interface IStageDirectory
     {
+                
+        Task<Boolean> RegisterStage(string stageId);
 
-        Task<StageAddress> GetStageAddress(string stageId);
-
-        Task<StageAddress> RegisterStage(string stageId, SocketAddress address);
+        Task<Boolean> IsLive(string stageId);
 
         Task UnregisterStage(string stageId);
 
-        Task<List<string>> GetAllStages();
+        Task<List<string>> GetAllStages(Boolean forceUpdate=false);
 
 
     }

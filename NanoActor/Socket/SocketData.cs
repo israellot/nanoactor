@@ -9,7 +9,7 @@ namespace NanoActor
     public class SocketData
     {
         [Key(0)]
-        public SocketAddress Address { get; set; }
+        public String StageId { get; set; }
 
         [Key(1)]
         public byte[] Data { get; set; }

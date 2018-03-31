@@ -8,6 +8,7 @@ using System.Threading.Tasks.Dataflow;
 using NanoActor.Directory;
 using System.Threading;
 using NanoActor.Telemetry;
+using System.Linq;
 
 namespace NanoActor
 {
@@ -78,7 +79,7 @@ namespace NanoActor
                         {
                             var remoteMessage = _serializer.Deserialize<RemoteStageMessage>(received.Data);
 
-                            if (remoteMessage.IsActorResponse)
+                            if (remoteMessage.MessageType==RemoteMessageType.ActorResponse)
                             {
                                 if (_serverResponseBuffer.TryGetValue(remoteMessage.ActorResponse.Id.ToString(), out var buffer))
                                 {
@@ -87,7 +88,7 @@ namespace NanoActor
 
                                 
                             }
-                            if (remoteMessage.IsPingReponse)
+                            if (remoteMessage.MessageType==RemoteMessageType.PingResponse)
                             {
                                 if (_pingResponseBuffer.TryGetValue(remoteMessage.Ping.Id.ToString(), out var semaphore))
                                 {
@@ -163,33 +164,43 @@ namespace NanoActor
 
         public async Task<ActorResponse> SendRemoteActorRequest(ActorRequest request, TimeSpan? timeout = null)
         {
-            var stageResponse = await _actorDirectory.GetAddress(request.ActorInterface, request.ActorId);
-            var stageAddress = await _stageDirectory.GetStageAddress(stageResponse.StageId);
-            return await SendRemoteActorRequest(stageAddress, request, timeout);
+
+            
+            if (request.WorkerActor)
+            {
+                var allStages = await _stageDirectory.GetAllStages();
+                var stageAddress = allStages.OrderBy(a => Guid.NewGuid()).FirstOrDefault();
+                return await SendRemoteActorRequest(stageAddress, request, timeout);
+            }
+            else
+            {
+                var stageResponse = await _actorDirectory.GetAddress(request.ActorInterface, request.ActorId);
+                if (await _stageDirectory.IsLive(stageResponse.StageId))
+                {
+                    return await SendRemoteActorRequest(stageResponse.StageId, request, timeout);
+                }
+                else
+                {
+                    return await SendRemoteActorRequest(null, request, timeout);
+                }
+
+            }
+           
             
         }
 
         public async Task<ActorResponse> SendRemoteActorRequest(String stageId, ActorRequest request, TimeSpan? timeout = null)
         {
 
-            var stageSocketAddress = await _stageDirectory.GetStageAddress(stageId);
-
-            return await SendRemoteActorRequest(stageSocketAddress, request, timeout);
-
-        }
-
-        public async Task<ActorResponse> SendRemoteActorRequest(StageAddress stageAddress, ActorRequest request, TimeSpan? timeout = null)
-        {
-
             var message = new RemoteStageMessage()
             {
                 ActorRequest = request,
-                IsActorRequest = true                
+                MessageType = RemoteMessageType.ActorRequest
             };
 
             if (request.FireAndForget)
             {
-                await _socketClient.SendRequest(stageAddress == null ? null : stageAddress.SocketAddress, _serializer.Serialize(message));
+                await _socketClient.SendRequest(stageId, _serializer.Serialize(message));
 
                 return new ActorResponse() { Success = true };
             }
@@ -197,7 +208,7 @@ namespace NanoActor
             {
                 var buffer = _serverResponseBuffer.GetOrAdd(request.Id.ToString(), new BufferBlock<ActorResponse>());
 
-                await _socketClient.SendRequest(stageAddress == null ? null : stageAddress.SocketAddress, _serializer.Serialize(message));
+                await _socketClient.SendRequest(stageId, _serializer.Serialize(message));
 
                 var response = await buffer.ReceiveAsync(timeout ?? TimeSpan.FromMilliseconds(-1));
 
@@ -207,22 +218,16 @@ namespace NanoActor
                 return response;
             }
 
-            
-
         }
 
-
+         
 
         public async Task<TimeSpan?> PingStage(String stageId)
         {
-            var stageSocketAddress = await _stageDirectory.GetStageAddress(stageId);
-
-            if (stageSocketAddress == null)
-                return null;
-
+            
             var message = new RemoteStageMessage()
             {               
-                IsPingRequest = true,
+                MessageType = RemoteMessageType.PingRequest,
                 Ping = new Ping()
             };
 
@@ -230,7 +235,7 @@ namespace NanoActor
 
             try
             {
-                await _socketClient.SendRequest(stageSocketAddress.SocketAddress, _serializer.Serialize(message));
+                await _socketClient.SendRequest(stageId, _serializer.Serialize(message));
 
                 if (await semaphore.WaitAsync(1000))
                 {

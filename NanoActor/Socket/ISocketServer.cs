@@ -11,9 +11,9 @@ namespace NanoActor
         
     public interface ISocketServer
     {
-        Task<SocketAddress> Listen();
+        Task<Boolean> Listen();
         Task<SocketData> Receive();
-        Task SendResponse(SocketAddress address, byte[] data);
+        Task SendResponse(string stageId, byte[] data);
 
         Int32 InboundBacklogCount();
 

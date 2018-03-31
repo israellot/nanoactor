@@ -18,5 +18,7 @@ namespace NanoActor.Directory
         Task<string> Reallocate(string actorTypeName, string actorId, string oldStageId);
 
         Task Refresh(string actorTypeName, string actorId);
+
+        Task RemoveStage(string stageId);
     }
 }

@@ -12,10 +12,11 @@ namespace NanoActor
 
         Task<object> Post(ITransportSerializer serializer,ActorRequest message, TimeSpan? timeout = null, CancellationToken? ct = null);
 
-        
+        event EventHandler DeactivateRequested;
     }
 
-    
 
+    public class WorkerActor : Attribute { }
+    public class AllowParallel : Attribute { }
     
 }

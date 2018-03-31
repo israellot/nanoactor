@@ -25,11 +25,12 @@ namespace NanoActor
         IStageDirectory _stageDirectory;
         ITelemetry _telemetry;
 
-        StageAddress _ownAddress;
+        String _ownStageId;
+
         Lazy<RemoteStageClient> _remoteClient;
         ConcurrentDictionary<Guid, BufferBlock<ActorResponse>> responseQueues = new ConcurrentDictionary<Guid, BufferBlock<ActorResponse>>();
 
-        ConcurrentDictionary<string, ConcurrentQueue<Tuple<ActorRequest, SocketAddress>>> _pausedActorMessageQueues = new ConcurrentDictionary<string, ConcurrentQueue<Tuple<ActorRequest, SocketAddress>>>();
+        ConcurrentDictionary<string, ConcurrentQueue<Tuple<ActorRequest, string>>> _pausedActorMessageQueues = new ConcurrentDictionary<string, ConcurrentQueue<Tuple<ActorRequest, string>>>();
 
         volatile Int32 _inputProccessBacklog = 0;
 
@@ -80,7 +81,9 @@ namespace NanoActor
 
             var address = await _socketServer.Listen();
 
-            _ownAddress = await _stageDirectory.RegisterStage(_localStage.StageGuid, address);
+            _ownStageId = _localStage.StageGuid;
+
+            await _stageDirectory.RegisterStage(_localStage.StageGuid);
 
             MonitorOtherStages();
 
@@ -98,12 +101,21 @@ namespace NanoActor
 
             //forward all requests from now on
             _localStage.Enabled = false;
-
+            
             //unregister stage
-            _stageDirectory.UnregisterStage(_ownAddress.StageId);
+            _stageDirectory.UnregisterStage(_ownStageId);
 
-            //unpause incomming queues
-            Interlocked.Exchange(ref _paused, 0);
+            Thread.Sleep(5000);
+
+            foreach (var queue in _pausedActorMessageQueues)
+            {
+                while (queue.Value.TryDequeue(out var request))
+                {
+                    this.ReceivedActorRequest(request.Item1, request.Item2);
+                }
+            }
+
+            Thread.Sleep(5000);
 
         }
 
@@ -137,22 +149,21 @@ namespace NanoActor
                                     return;
                                 }
 
-                                if (remoteMessage.IsActorResponse)
+                                if (remoteMessage.MessageType==RemoteMessageType.ActorResponse)
                                 {
                                     ReceivedActorResponse(remoteMessage.ActorResponse);
                                 }
-                                if (remoteMessage.IsActorRequest)
+                                if (remoteMessage.MessageType==RemoteMessageType.ActorRequest)
                                 {
                                     Task.Factory.StartNew(() =>
                                     {
-                                        return ReceivedActorRequest(remoteMessage.ActorRequest, received.Address);
+                                        return ReceivedActorRequest(remoteMessage.ActorRequest, received.StageId);
                                     }, TaskCreationOptions.PreferFairness);
 
-
                                 }
-                                if (remoteMessage.IsPingRequest)
+                                if (remoteMessage.MessageType==RemoteMessageType.PingRequest)
                                 {
-                                    await ProcessPingRequest(received.Address, remoteMessage.Ping).ConfigureAwait(false);
+                                    await ProcessPingRequest(received.StageId, remoteMessage.Ping).ConfigureAwait(false);
                                 }
 
                                 Interlocked.Decrement(ref _inputProccessBacklog);
@@ -191,10 +202,15 @@ namespace NanoActor
                     {
                         var stages = await _stageDirectory.GetAllStages();
 
-                        if (!stages.Contains(_ownAddress.StageId))
+                        if (!stages.Contains(_ownStageId))
                         {
                             //others have signaled this stage as dead
-                            await _stageDirectory.RegisterStage(_localStage.StageGuid, _ownAddress.SocketAddress);
+
+                            //clear local stage
+                            await _localStage.Stop();
+
+                            //register again
+                            await _stageDirectory.RegisterStage(_localStage.StageGuid);
                         }
 
                     }
@@ -234,48 +250,50 @@ namespace NanoActor
                         }
                         stages = newStages;
 
-                        var otherStages = newStages.Where(s => s != _ownAddress.StageId).ToList();
+                        var otherStages = newStages.Where(s => s != _ownStageId).ToList();
 
                         stageCountMetric.Track(stages.Count);
 
                         foreach (var stage in otherStages)
                         {
-                            var localStage = stage;
+                            var _stageRef = stage;
                             var task = Task.Run(async () =>
                             {
 
-                                var pingResponse = await _remoteClient.Value.PingStage(localStage);
+                                var pingResponse = await _remoteClient.Value.PingStage(_stageRef);
 
                                 if (pingResponse == null)
                                 {
                                     
-                                    var count = _missedPings.AddOrUpdate(localStage, 1, (s, c) => {
+                                    var count = _missedPings.AddOrUpdate(_stageRef, 1, (s, c) => {
                                          return c+1;
                                         });
 
-                                    _logger.LogDebug("Stage {0} missed ping, count: {1}", localStage, count);
+                                    _logger.LogDebug("Stage {0} missed ping, count: {1}", _stageRef, count);
 
                                     if (count > 5)
                                     {
-                                        await _stageDirectory.UnregisterStage(localStage);
-                                        _logger.LogDebug("Stage {0} removed", localStage, count);
-                                        _missedPings.TryRemove(localStage, out _);
+                                        await _stageDirectory.UnregisterStage(_stageRef);
+                                        await _actorDirectory.RemoveStage(_stageRef);
 
-                                        _metrics.TryRemove(localStage, out _);
+                                        _logger.LogDebug("Stage {0} removed", _stageRef, count);
+                                        _missedPings.TryRemove(_stageRef, out _);
+
+                                        _metrics.TryRemove(_stageRef, out _);
                                     }
                                 }
                                 else
                                 {
-                                    var metric = _metrics.GetOrAdd(localStage,
+                                    var metric = _metrics.GetOrAdd(_stageRef,
                                         _telemetry.Metric($"Stage.Ping", new Dictionary<string, string>() {
-                                            {"FromStage",_ownAddress.StageId},
-                                            {"ToStage",localStage }
+                                            {"FromStage",_ownStageId},
+                                            {"ToStage",_stageRef }
                                         }));
 
 
                                     metric.Track(pingResponse.Value.TotalMilliseconds);
 
-                                    _missedPings.TryRemove(localStage, out _);
+                                    _missedPings.TryRemove(_stageRef, out _);
                                 }
 
                             }).ConfigureAwait(false);
@@ -294,60 +312,92 @@ namespace NanoActor
             }).ConfigureAwait(false);
         }
 
-        public async Task ReceivedActorRequest(ActorRequest message, SocketAddress sourceAddress)
+        public async Task ReceivedActorRequest(ActorRequest message, string sourceStageId)
         {
-
-           
-
+                       
             if (_localStage == null || !_localStage.Enabled)
             {
                 //we are inside a client, no point on getting actor requests
                 return;
             }
-                        
-            
-            if (_pausedActorMessageQueues.TryGetValue(string.Join(":", message.ActorInterface, message.ActorId), out var queue))
+
+            var pausedQueueKey = string.Join(":", message.ActorInterface, message.ActorId);
+            if (!_pausedActorMessageQueues.TryGetValue(pausedQueueKey, out var queue))
+            {
+                if (_paused == 1 && _localStage.CanProcessMessage(message))
+                {
+                    var newQueue = new ConcurrentQueue<Tuple<ActorRequest, string>>();
+                    if (_pausedActorMessageQueues.TryAdd(pausedQueueKey, newQueue))
+                    {
+                        queue = newQueue;
+                    }
+                }
+            }
+            if (queue != null)
             {
                 //actor is being delayed, queue
-                queue.Enqueue(new Tuple<ActorRequest, SocketAddress>(message, sourceAddress));
+                queue.Enqueue(new Tuple<ActorRequest, string>(message, sourceStageId));
                 return;
             }
-            
-            
-            var queryResult = await _actorDirectory.GetAddress(message.ActorInterface, message.ActorId);
+         
 
-                if (queryResult.Found)
+            if (message.WorkerActor)
+            {
+
+                await ProcessActorRequestLocally(message, sourceStageId);
+                return;
+
+            }
+
+            if (_localStage.CanProcessMessage(message))
+            {
+                //we already have a local instance
+                await ProcessActorRequestLocally(message, sourceStageId);
+                return;
+            }
+
+            //query the directory
+            var queryResult = await _actorDirectory.GetAddress(message.ActorInterface, message.ActorId);
+            if (queryResult.Found)
+            {
+
+                if (queryResult.StageId == _localStage.StageGuid)
                 {
-                    if (queryResult.StageId == _localStage.StageGuid)
+                    //instance already registered on this stage but not active
+                    await ProcessActorRequestLocally(message, sourceStageId);
+                    return;
+                }
+                else
+                {
+                    if (await _stageDirectory.IsLive(queryResult.StageId))
                     {
-                        await ProcessActorRequestLocally(message, sourceAddress);
-                        return;
+                        //proxy request to the right stage
+                        var remoteResponse = await _remoteClient.Value.SendRemoteActorRequest(queryResult.StageId, message);
+                        if (!message.FireAndForget)
+                        {
+                            await this.SendActorResponse(sourceStageId, remoteResponse);
+                        }
                     }
                     else
                     {
-                        if (await _stageDirectory.GetStageAddress(queryResult.StageId)!=null)
-                        {
-                            var remoteResponse = await _remoteClient.Value.SendRemoteActorRequest(queryResult.StageId, message);
-                            if (!message.FireAndForget)
-                            {
-                                await this.SendActorResponse(sourceAddress, remoteResponse);
-                            }
-                        }
-                        else
-                        {
-                            //the stage is no longer active
+                        //reallocate the actor
+                        var newStageId = await _actorDirectory.Reallocate(message.ActorInterface, message.ActorId, queryResult.StageId);
 
-                            //reallocate the actor
-                            var newStageId = await _actorDirectory.Reallocate(message.ActorInterface, message.ActorId, queryResult.StageId);
-
-                            //try again
-                            await ReceivedActorRequest(message, sourceAddress);
-                        }
-                        
-                    }                    
+                        //try again
+                        await ReceivedActorRequest(message, sourceStageId);
+                    }
+                    
                 }
-                
-            //}
+            }
+            else
+            {
+                //reallocate the actor
+                var newStageId = await _actorDirectory.Reallocate(message.ActorInterface, message.ActorId, queryResult.StageId);
+
+                //try again
+                await ReceivedActorRequest(message, sourceStageId);
+
+            }
 
 
 
@@ -356,7 +406,7 @@ namespace NanoActor
         public async Task RelocateActor(string actorTypeName, String actorId,String newStageId=null)
         {
             var key = string.Join(":", actorTypeName, actorId);
-            var queue = new ConcurrentQueue<Tuple<ActorRequest,SocketAddress>>();
+            var queue = new ConcurrentQueue<Tuple<ActorRequest,string>>();
             if (_pausedActorMessageQueues.TryAdd(key, queue)){
 
                 try
@@ -366,7 +416,7 @@ namespace NanoActor
 
                     if (newStageId == null)
                     {
-                        newStageId = (await _stageDirectory.GetAllStages()).Where(s => s != _ownAddress.StageId).FirstOrDefault();
+                        newStageId = (await _stageDirectory.GetAllStages()).Where(s => s != _ownStageId).FirstOrDefault();
 
                         if (newStageId == null)
                             throw new Exception("No other stage running");
@@ -402,7 +452,7 @@ namespace NanoActor
           
         }
 
-        protected async Task ProcessActorRequestLocally(ActorRequest message, SocketAddress sourceAddress)
+        protected async Task ProcessActorRequestLocally(ActorRequest message, string sourceStageId)
         {
             ActorResponse response = null;
             try {
@@ -422,51 +472,51 @@ namespace NanoActor
 
             if (!message.FireAndForget)
             {
-                await this.SendActorResponse(sourceAddress, response);
+                await this.SendActorResponse(sourceStageId, response);
             }
 
 
         }
 
 
-        public async Task SendActorResponse(SocketAddress address, ActorResponse response)
+        public async Task SendActorResponse(string stageId, ActorResponse response)
         {
-            if (address == null)
+            if (String.IsNullOrEmpty(stageId))
             {
                 //message for local client
                 _remoteClient.Value.ServerResponse(response);
             }
             else
             {
-                var message = new RemoteStageMessage() { IsActorResponse = true, ActorResponse = response };
+                var message = new RemoteStageMessage() {MessageType=RemoteMessageType.ActorResponse, ActorResponse = response };
 
 
-                await this.SendMessage(address, message);
+                await this.SendMessage(stageId, message);
             }
 
           
         }
 
-        public Task ProcessPingRequest(SocketAddress address,Ping ping)
+        public Task ProcessPingRequest(string stageId,Ping ping)
         {
             var message = new RemoteStageMessage()
             {
                 Ping = ping,
-                IsPingReponse = true
+                MessageType = RemoteMessageType.PingResponse
             };
 
-            return SendMessage(address, message);
+            return SendMessage(stageId, message);
 
         }
         
-        public async Task SendMessage(SocketAddress address,RemoteStageMessage message)
+        public async Task SendMessage(String stageId,RemoteStageMessage message)
         {           
-            message.Destination = address;
-            message.Source = _ownAddress.SocketAddress;
+            message.Destination = stageId;
+            message.Source = _ownStageId;
 
             var transportMessage = _serializer.Serialize(message);
 
-            await _socketServer.SendResponse(address, transportMessage);
+            await _socketServer.SendResponse(stageId, transportMessage);
         }
 
         public Int32 MessageBacklog()

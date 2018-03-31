@@ -143,7 +143,8 @@ namespace NanoActor.ActorProxy
                 ActorInterface = $"{invocation.Method.DeclaringType.Namespace}.{invocation.Method.DeclaringType.Name}",
                 ActorMethodName = invocation.Method.Name,
                 Arguments = arguments,
-                FireAndForget = _fireAndForget
+                FireAndForget = _fireAndForget,
+                WorkerActor = invocation.Method.DeclaringType.GetCustomAttribute<WorkerActor>()!=null
             };
 
             var task = Task.Run(() =>

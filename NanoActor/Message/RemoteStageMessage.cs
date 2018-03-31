@@ -6,31 +6,34 @@ using MessagePack;
 
 namespace NanoActor
 {
+    public enum RemoteMessageType
+    {
+        PingRequest = 0,
+        PingResponse = 1,
+        ActorRequest =2,
+        ActorResponse=3,
+        
+    }
+
     [MessagePackObject]
     public class RemoteStageMessage
     {
         [MessagePack.Key(0)]
-        public SocketAddress Source { get; set; }
+        public String Source { get; set; }
 
         [MessagePack.Key(1)]
-        public SocketAddress Destination { get; set; }
+        public String Destination { get; set; }
 
         [MessagePack.Key(2)]
-        public Boolean IsActorResponse { get; set; }
+        public RemoteMessageType MessageType { get; set; }
 
         [MessagePack.Key(3)]
         public ActorResponse ActorResponse { get; set; }
-
-        [MessagePack.Key(4)]
-        public Boolean IsActorRequest { get; set; }
         
-        [MessagePack.Key(5)]
+        [MessagePack.Key(4)]
         public ActorRequest ActorRequest { get; set; }
-        [MessagePack.Key(6)]
-        public Boolean IsPingRequest { get; set; }
-        [MessagePack.Key(7)]
-        public Boolean IsPingReponse { get; set; }
-        [MessagePack.Key(8)]
+       
+        [MessagePack.Key(5)]
         public Ping Ping { get; set; }
 
     }

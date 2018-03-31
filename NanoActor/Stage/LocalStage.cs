@@ -116,9 +116,24 @@ namespace NanoActor
             LocalMonitorTask();
         }
 
-        public void DeactivateInstance(string actorTypeName,string actorId)
+        public void DeactivateInstance(string key)
         {
+            try
+            {
+                if (_actorInstances.TryRemove(key, out var instance))
+                {
+                    _logger.LogDebug("Deactivated instance for {0}. Actor Id : {1}. Requested", instance.ActorTypeName, instance.ActorId);
+                    instance.Instance.Dispose();
+                    instance = null;
 
+                    _deactivatedInstancesMeter.Tick();
+                }
+            }
+            catch(Exception ex)
+            {
+                _telemetry.Exception(ex);
+            }
+           
         }
 
         public void LocalMonitorTask()
@@ -272,14 +287,28 @@ namespace NanoActor
                             }
                         }
 
-                        //mark instance
-                        await _actorDirectory.RegisterActor(actorTypeName, actorId, StageGuid);
+                        if (actorType.GetCustomAttribute<WorkerActor>() == null)
+                        {
+                            //register instance on directory
+                            await _actorDirectory.RegisterActor(actorTypeName, actorId, StageGuid);
+                        }
+                        
 
                         //try a registered service
                         Object actor = null;
 
                         actor = _services.GetRequiredService(actorType);
-                        
+
+                        ((IActor)actor).DeactivateRequested += (o,e) => {
+                            var localActor = o as IActor;
+
+                            if (o != null)
+                            {
+                                DeactivateInstance(localActor.Id);
+                            }
+                           
+                        };
+
                         actorInstance = new LocalActorInstance()
                         {
                             ActorId = actorId,
@@ -292,7 +321,7 @@ namespace NanoActor
                         try
                         {
                             actorInstance.Instance.Id = actorId;
-                            actorInstance.Instance.Configure(actorTypeName, _pubsub);
+                            actorInstance.Instance.Configure(actorTypeName,_pubsub);
                             await actorInstance.Instance.Run();
                             if(!_actorInstances.TryAdd(actorInstanceKey, actorInstance))
                             {
@@ -397,6 +426,11 @@ namespace NanoActor
                     try
                     {
                         await i.Instance.WaitIdle();
+
+                        await _actorDirectory.UnregisterActor(i.ActorTypeName, i.ActorId, StageGuid);
+
+                        DeactivateInstance(i.Instance.Id);
+
                         i.Instance.Dispose();
                     }
                     catch { }
