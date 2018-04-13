@@ -6,6 +6,7 @@ using NanoActor.Telemetry;
 using Polly;
 using StackExchange.Redis;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -14,6 +15,9 @@ using System.Threading.Tasks.Dataflow;
 
 namespace NanoActor.Socket.Redis
 {
+
+   
+
     public class RedisSocketServer : ISocketServer
     {
         IServiceProvider _services;
@@ -38,9 +42,11 @@ namespace NanoActor.Socket.Redis
 
         String _guid;
 
-        BufferBlock<SocketData> _inputBuffer = new BufferBlock<SocketData>();
+        public event EventHandler<DataReceivedEventArgs> DataReceived;
 
         LocalStage _localStage;
+
+        MetricTracker _redisPingTracker;
 
         public RedisSocketServer(
             IServiceProvider services,
@@ -58,12 +64,12 @@ namespace NanoActor.Socket.Redis
 
             _logger = logger;
 
-           
         }
 
         protected void MessageReceived(string channel,byte[] message)
         {
-            
+           
+
             var remoteGuid = channel.Split(':').Last();
 
             var socketData = new SocketData()
@@ -72,11 +78,13 @@ namespace NanoActor.Socket.Redis
                 Data = message
             };
 
-            _inputBuffer.Post(socketData);
+            DataReceived?.Invoke(this, new DataReceivedEventArgs() { SocketData = socketData });
+
+            //_inputBuffer.Post(socketData);
 
         }
 
-        
+       
 
         public async Task<Boolean> Listen()
         {
@@ -144,16 +152,29 @@ namespace NanoActor.Socket.Redis
                 _telemetry.Exception(ex);
                 _logger.LogCritical("Failed to start listener");
             }
-                        
+
+            RedisPing();
+
             return true;
         }
 
-       
-
-        public async Task<SocketData> Receive()
+        public async Task RedisPing()
         {
-            return await _inputBuffer.ReceiveAsync();
+            _redisPingTracker = _telemetry.Metric("Stage.Redis.Ping", new Dictionary<string, string>() { ["FromStage"] = _guid });
+
+            while (true)
+            {
+                try
+                {
+                    await Task.Delay(5000);
+                    var ping = await _multiplexer.GetDatabase().PingAsync();
+                    _redisPingTracker.Track(ping.TotalMilliseconds);                    
+                }
+                catch (Exception ex) { }
+            }
         }
+
+       
 
         public Task SendResponse(string stageId, byte[] data)
         {
@@ -163,10 +184,6 @@ namespace NanoActor.Socket.Redis
 
             return Task.CompletedTask;
         }
-
-        public int InboundBacklogCount()
-        {
-            return _inputBuffer.Count;
-        }
+      
     }
 }

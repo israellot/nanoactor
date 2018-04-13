@@ -7,12 +7,13 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <PlatformTarget>AnyCPU</PlatformTarget>
     
-    <Optimize>False</Optimize>
+    <Optimize>true</Optimize>
   </PropertyGroup>
   
   
   <PropertyGroup>
     <ServerGarbageCollection>true</ServerGarbageCollection>
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

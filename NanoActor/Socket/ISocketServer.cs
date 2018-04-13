@@ -7,15 +7,17 @@ using System.Threading.Tasks;
 
 namespace NanoActor
 {
-           
-        
+    public class DataReceivedEventArgs : EventArgs
+    {
+        public SocketData SocketData { get; set; }
+    }
+
     public interface ISocketServer
     {
         Task<Boolean> Listen();
-        Task<SocketData> Receive();
         Task SendResponse(string stageId, byte[] data);
 
-        Int32 InboundBacklogCount();
+        event EventHandler<DataReceivedEventArgs> DataReceived;
 
     }
 

@@ -13,6 +13,7 @@ using StackExchange.Redis;
 using NanoActor.Test.Actors;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Logging;
+using MessagePack;
 
 namespace DebugHelper
 {
@@ -125,22 +126,42 @@ namespace DebugHelper
             Console.WriteLine("Press Key");
             Console.ReadKey();
 
+            var lockObject = new object();
+
+
             CancellationTokenSource cts = new CancellationTokenSource();
 
-            int req = 0;
-            int resp = 0;
+            long req = 0;
+            long resp = 0;
             Stopwatch sw = Stopwatch.StartNew();
+
+            long completeRequests = 0;
+            double totalTime = 0;
 
             Task.Run(() => {
                 while (true)
                 {
                     Interlocked.Exchange(ref resp,0);
                     Interlocked.Exchange(ref req, 0);
+                    Interlocked.Exchange(ref completeRequests, 0);
+                    Interlocked.Exchange(ref totalTime, 0);
+
                     sw.Restart();
                     Thread.Sleep(5000);
 
-                    Console.WriteLine($"{ (double)req / ((double)sw.ElapsedMilliseconds / 1000.0):f2} req/s");
-                    Console.WriteLine($"{ ((double)sw.ElapsedMilliseconds)/(double)req:f2} ms/rq");
+                    var totalElapsedMs = sw.Elapsed.TotalMilliseconds;
+
+                    double totalMs;
+                    long totalComplete;
+                    lock (lockObject)
+                    {
+                        totalMs = totalTime;
+                        totalComplete = Interlocked.Read(ref completeRequests);
+                    }
+
+                    Console.WriteLine($"{ totalComplete / 1000.0:f2} K requests , {totalElapsedMs:f2} ms");
+                    Console.WriteLine($"{ (double)totalComplete / 1000.0 / totalElapsedMs*1000:f2} K req/s");
+                    Console.WriteLine($"{ totalMs / (double)totalComplete:f2} ms/rq");
                     Console.WriteLine($"Local Backlog: {req - resp}");                    
                     Console.WriteLine();
                 }
@@ -149,6 +170,7 @@ namespace DebugHelper
 
             var stop = false;
 
+
             for(int i = 0; i < 500; i++)
             {
 
@@ -156,7 +178,12 @@ namespace DebugHelper
 
                 Task.Run(async () =>
                 {
+                    await Task.Delay(50 * iCopy);
+                    Console.WriteLine($"Starting worker {iCopy}");
+
                     var proxy = clientStage.ProxyFactory.GetProxy<ITestActor>("test"+ iCopy.ToString());
+
+                    var localSw = Stopwatch.StartNew();
 
                     while (!cts.Token.IsCancellationRequested)
                     {
@@ -167,11 +194,20 @@ namespace DebugHelper
 
                             Interlocked.Increment(ref req);
 
-                                                        
+                            localSw.Restart();                                                        
                             var helloResponse = await proxy.Hello("Hello");
+                            localSw.Stop();
 
                             Interlocked.Increment(ref resp);
+                            Interlocked.Increment(ref completeRequests);
 
+                            lock (lockObject)
+                            {
+                                totalTime = totalTime + localSw.Elapsed.TotalMilliseconds;
+                            }
+
+                            
+                            
                             if (helloResponse != $"Hello World test" + iCopy)
                             {
                                 var a = "";

@@ -34,7 +34,7 @@ namespace NanoActor
     public class LocalStage
     {
 
-        Dictionary<string, Type> _actorMap = new Dictionary<string, Type>();
+        ConcurrentDictionary<string, Type> _actorMap = new ConcurrentDictionary<string, Type>();
 
         ConcurrentDictionary<string, LocalActorInstance> _actorInstances = new ConcurrentDictionary<string, LocalActorInstance>();
 
@@ -254,7 +254,7 @@ namespace NanoActor
 
         ConcurrentDictionary<string, AsyncLock> _activationLocks = new ConcurrentDictionary<string, AsyncLock>();
 
-        public async Task<LocalActorInstance> ActivateInstance(string actorTypeName,String actorId)
+        public Task<LocalActorInstance> ActivateInstance(string actorTypeName,String actorId)
         {
                         
             var actorInstanceKey = string.Join(",", actorTypeName, actorId);
@@ -263,87 +263,92 @@ namespace NanoActor
 
             if (_actorInstances.TryGetValue(actorInstanceKey, out var actorInstance))
             {
-                return actorInstance;
+                return Task.FromResult(actorInstance);
             }
             else
             {
                 var asyncLock = _activationLocks.GetOrAdd(actorInstanceKey, new AsyncLock());
 
-                using (await asyncLock.LockAsync())
-                {
-                    if (!_actorInstances.TryGetValue(actorInstanceKey, out actorInstance))
+                return Task.Run(async () => {
+
+                    using (await asyncLock.LockAsync())
                     {
-                        if (!_actorMap.TryGetValue(actorTypeName, out var actorType))
+                        if (!_actorInstances.TryGetValue(actorInstanceKey, out actorInstance))
                         {
-                            actorType = FindInterface(actorTypeName);
+                            if (!_actorMap.TryGetValue(actorTypeName, out var actorType))
+                            {
+                                actorType = FindInterface(actorTypeName);
 
-                            if (actorType != null)
-                            {
-                                _actorMap[actorTypeName] = actorType;
+                                if (actorType != null && !String.IsNullOrEmpty(actorTypeName))
+                                {
+                                    _actorMap[actorTypeName] = actorType;
+                                }
+                                else
+                                {
+                                    throw new ArgumentException("Couldn't find actor service", "actorTypeName");
+                                }
                             }
-                            else
+
+                            if (actorType.GetCustomAttribute<WorkerActor>() == null)
                             {
-                                throw new ArgumentException("Couldn't find actor service", "actorTypeName");
+                                //register instance on directory
+                                await _actorDirectory.RegisterActor(actorTypeName, actorId, StageGuid);
                             }
+
+
+                            //try a registered service
+                            Object actor = null;
+
+                            actor = _services.GetRequiredService(actorType);
+
+                            ((IActor)actor).DeactivateRequested += (o, e) => {
+                                var localActor = o as IActor;
+
+                                if (o != null)
+                                {
+                                    DeactivateInstance(localActor.Id);
+                                }
+
+                            };
+
+                            actorInstance = new LocalActorInstance()
+                            {
+                                ActorId = actorId,
+                                ActivationTimestamp = DateTimeOffset.UtcNow,
+                                LastAccess = DateTimeOffset.UtcNow,
+                                Instance = (Actor)actor,
+                                ActorTypeName = actorTypeName
+                            };
+
+                            try
+                            {
+                                actorInstance.Instance.Id = actorId;
+                                actorInstance.Instance.Configure(actorTypeName, _pubsub);
+                                await actorInstance.Instance.Run();
+                                if (!_actorInstances.TryAdd(actorInstanceKey, actorInstance))
+                                {
+                                    actorInstance.Instance.Dispose();
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                throw new Exception("Failed to initialize actor", ex);
+                            }
+
+
+
+                            _logger.LogDebug("Activated instance for {0}. Actor Id : {1}", actorTypeName, actorId);
                         }
 
-                        if (actorType.GetCustomAttribute<WorkerActor>() == null)
-                        {
-                            //register instance on directory
-                            await _actorDirectory.RegisterActor(actorTypeName, actorId, StageGuid);
-                        }
-                        
 
-                        //try a registered service
-                        Object actor = null;
-
-                        actor = _services.GetRequiredService(actorType);
-
-                        ((IActor)actor).DeactivateRequested += (o,e) => {
-                            var localActor = o as IActor;
-
-                            if (o != null)
-                            {
-                                DeactivateInstance(localActor.Id);
-                            }
-                           
-                        };
-
-                        actorInstance = new LocalActorInstance()
-                        {
-                            ActorId = actorId,
-                            ActivationTimestamp = DateTimeOffset.UtcNow,
-                            LastAccess = DateTimeOffset.UtcNow,
-                            Instance = (Actor)actor,
-                            ActorTypeName=actorTypeName
-                        };
-
-                        try
-                        {
-                            actorInstance.Instance.Id = actorId;
-                            actorInstance.Instance.Configure(actorTypeName,_pubsub);
-                            await actorInstance.Instance.Run();
-                            if(!_actorInstances.TryAdd(actorInstanceKey, actorInstance))
-                            {
-                                actorInstance.Instance.Dispose();
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            throw new Exception("Failed to initialize actor", ex);
-                        }
-
-                        
-
-                        _logger.LogDebug("Activated instance for {0}. Actor Id : {1}", actorTypeName, actorId);
                     }
+                    _activationLocks.TryRemove(actorInstanceKey, out _);
 
-                    
-                }
-                _activationLocks.TryRemove(actorInstanceKey, out _);
+                    return actorInstance;
+                });
 
 
-                return actorInstance;
+
             }
 
         }
@@ -361,7 +366,7 @@ namespace NanoActor
 
             var track = _serviceOptions.TrackActorExecutionDependencyCalls ?
                 _telemetry.Dependency($"actor:{message.ActorInterface}", message.ActorMethodName) : null;
-
+            
             try
             {
               

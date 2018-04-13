@@ -9,7 +9,7 @@ namespace NanoActor
     {
         Task SendRequest(string stageId, byte[] data);
 
-        Task<SocketData> Receive();
+        event EventHandler<DataReceivedEventArgs> DataReceived;
     }
 
 }

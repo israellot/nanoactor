@@ -54,16 +54,25 @@ namespace NanoActor
             semaphore = new SemaphoreSlim(1);
         }
 
-        public Task<IDisposable> LockAsync()
+        public Task<IDisposable> LockAsync(TimeSpan? timeout=null)
         {
-            Task wait = semaphore.WaitAsync();
+            CancellationToken ct;
+            if (timeout == null) ct = CancellationToken.None;
+            else
+                ct = new CancellationTokenSource(timeout.Value).Token;
+
+            Task wait = semaphore.WaitAsync(ct);
             if (wait.IsCompleted)
                 return Task.FromResult((IDisposable)new LockReleaser(this));
             else
             {
                 return wait.ContinueWith(
-                    _ => (IDisposable)new LockReleaser(this),
-                    CancellationToken.None,
+                    t => {
+                        if (t.IsCanceled) return null;
+
+                        return (IDisposable)new LockReleaser(this);
+                    } ,
+                    ct,
                     TaskContinuationOptions.ExecuteSynchronously,
                     TaskScheduler.Current);
             }

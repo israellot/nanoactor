@@ -47,7 +47,7 @@ namespace NanoActor
             _memoryCache = new MemoryCache(cacheOptions);
 
             _databaseLazy = new Lazy<IDatabase>(() => {
-                return _connectionFactory.GetDatabase().WithKeyPrefix($"{_serviceOptions.ServiceName}");
+                return _connectionFactory.GetDatabase().WithKeyPrefix($"{_serviceOptions.ServiceName}-");
             });
 
             _updateTask = Task.Run(async () => {
@@ -56,7 +56,7 @@ namespace NanoActor
                     try
                     {
                         await GetAllStages(true);
-                        await Task.Delay(2);
+                        await Task.Delay(TimeSpan.FromSeconds(1));
                     }
                     catch{ }
                 }
@@ -67,14 +67,8 @@ namespace NanoActor
         public async Task<Boolean> RegisterStage(string stageId)
         {
 
-            try
-            {
-                await _database.SetAddAsync(_stageDirectoryKey, stageId);
-            }catch(RedisException e)
-            {
-                await _database.KeyDeleteAsync(_stageDirectoryKey);
-                await _database.SetAddAsync(_stageDirectoryKey, stageId);
-            }
+            await _database.SetAddAsync(_stageDirectoryKey, stageId);
+
 
             return true;
         }
@@ -91,11 +85,12 @@ namespace NanoActor
             {
                 var stagesValues = await _database.SetMembersAsync(_stageDirectoryKey);
 
-                stages= stagesValues.Select(s => (string)s).ToList();
+                stages = stagesValues.Select(s => (string)s).ToList();
 
-                _memoryCache.Set("all", stages,TimeSpan.FromSeconds(4));
+                _memoryCache.Set("all", stages, TimeSpan.FromSeconds(4));
 
                 return stages;
+               
             }
            
         }

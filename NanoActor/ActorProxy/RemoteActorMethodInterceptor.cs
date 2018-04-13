@@ -27,7 +27,6 @@ namespace NanoActor.ActorProxy
 
         NanoServiceOptions _serviceOptions;
 
-        protected static ConcurrentDictionary<string, Func<byte[],object>> _deserializerAccessors = new ConcurrentDictionary<string, Func<byte[], object>>();
         
         public RemoteActorMethodInterceptor(
             RemoteStageClient remoteClient,
@@ -58,23 +57,32 @@ namespace NanoActor.ActorProxy
 
             var actor = (IActor)invocation.Proxy;
 
-            List<byte[]> arguments = new List<byte[]>();
-            foreach (var argument in invocation.Arguments)
-            {
-                arguments.Add(_serializer.Serialize(argument));
-            }
+            
+            //List<byte[]> arguments = new List<byte[]>();
+            //foreach (var argument in invocation.Arguments)
+            //{
+            //    arguments.Add(_serializer.Serialize(argument));
+            //}
                
 
-            var message = new ActorRequest()
+            //var message = new ActorRequest()
+            //{
+            //    ActorId = actor.Id,
+            //    ActorInterface = $"{invocation.Method.DeclaringType.Namespace}.{invocation.Method.DeclaringType.Name}",
+            //    ActorMethodName = invocation.Method.Name,
+            //    Arguments = arguments,
+            //    FireAndForget=_fireAndForget
+            //};
+
+            var message = new LocalActorRequest()
             {
                 ActorId = actor.Id,
-                ActorInterface = $"{invocation.Method.DeclaringType.Namespace}.{invocation.Method.DeclaringType.Name}",
-                ActorMethodName = invocation.Method.Name,
-                Arguments = arguments,
-                FireAndForget=_fireAndForget
+                ActorMethod=invocation.Method,
+                ArgumentObjects = invocation.Arguments,
+                FireAndForget = _fireAndForget
             };
 
-                        
+
             var task = Task.Run(() =>{
 
 
@@ -130,51 +138,33 @@ namespace NanoActor.ActorProxy
             var actor = (IActor)invocation.Proxy;
 
 
-            List<byte[]> arguments = new List<byte[]>();
-            foreach (var argument in invocation.Arguments)
-            {
-                arguments.Add(_serializer.Serialize(argument));
-            }
-            
-
-            var message = new ActorRequest()
+            var message = new LocalActorRequest()
             {
                 ActorId = actor.Id,
-                ActorInterface = $"{invocation.Method.DeclaringType.Namespace}.{invocation.Method.DeclaringType.Name}",
-                ActorMethodName = invocation.Method.Name,
-                Arguments = arguments,
-                FireAndForget = _fireAndForget,
-                WorkerActor = invocation.Method.DeclaringType.GetCustomAttribute<WorkerActor>()!=null
+                ActorMethod = invocation.Method,
+                ArgumentObjects = invocation.Arguments,
+                FireAndForget = _fireAndForget
             };
 
-            var task = Task.Run(() =>
+
+
+            var task = Task.Run(async () =>
             {
                 var tracker = _serviceOptions.TrackProxyDependencyCalls ?
                     _telemetry.Dependency($"proxy.actor:{message.ActorInterface}", message.ActorMethodName) : null;
 
-                return _remoteClient.SendActorRequest(message, _timeout)
-                .ContinueWith(t =>
-                {                    
+                var t = _remoteClient.SendActorRequest(message, _timeout);
+                if (_fireAndForget)
+                {
+                    tracker?.End(true);
 
-                    if (_fireAndForget)
+                    return default(TResult);
+                }
+                else
+                {
+                    try
                     {
-                        tracker?.End(true);
-
-
-                        return default(TResult);
-                    }
-                    else
-                    {
-                        if (t.IsFaulted)
-                        {
-                           
-                            tracker?.End(false);
-
-                            if (t.Exception != null)
-                                throw t.Exception;
-                        }
-
-                        var result = t.Result;
+                        var result = await t;
 
                         if (!result.Success)
                         {
@@ -190,17 +180,24 @@ namespace NanoActor.ActorProxy
                         {
                             tracker?.End(true);
 
-
                             var returnType = invocation.Method.ReturnType.GetGenericArguments()[0];
 
                             var obj = _serializer.Deserialize(returnType, result.Response);
 
                             return (TResult)(obj);
                         }
-                       
-                    }
 
-                });
+                    }
+                    catch(Exception ex)
+                    {
+                        tracker?.End(false);
+
+                        throw ex;
+                    }
+                    
+
+
+                }
             });
                 
                 

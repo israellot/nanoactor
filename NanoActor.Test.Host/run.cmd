@@ -1,0 +1,1 @@
+dotnet NanoActor.Test.Host.dll

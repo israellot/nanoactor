@@ -41,7 +41,7 @@ namespace NanoActor
     [MessagePackObject]
     public class Ping
     {
-        [MessagePack.Key(0)]
+        [MessagePack.Key(0)]       
         public Guid Id { get; set; }
         [MessagePack.Key(1)]
         public long Timestamp { get; set; }
@@ -49,7 +49,7 @@ namespace NanoActor
         public Ping()
         {
             this.Id = Guid.NewGuid();
-            this.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            this.Timestamp = DateTimeOffset.UtcNow.Ticks;
         }
     }
 }

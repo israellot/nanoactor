@@ -97,7 +97,7 @@ namespace NanoActor.Telemetry
 
         public void TrackMetric(string metricName, int count, double sum, double min, double max, double stdDeviation, TimeSpan period, DateTimeOffset startTimestamp, IDictionary<string, string> properties = null)
         {
-            var infoMessage = $"Telemetry Metric: {metricName} Count: {count} Min: {min} Max: {max} Period: {period.Humanize()}";
+            var infoMessage = $"Telemetry Metric: {metricName} Count: {count} Min: {min} Mean {sum/Math.Max(count,1):f2} Max: {max} Period: {period.Humanize()}";
             if (properties!=null && properties.Count > 0)
             {
                 infoMessage += "\r\n\tProperties:\r\n\t";

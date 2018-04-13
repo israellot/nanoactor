@@ -1,6 +1,7 @@
 ﻿using MessagePack;
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -18,13 +19,13 @@ namespace NanoActor
         public Boolean FireAndForget { get; set; }
 
         [MessagePack.Key(2)]
-        public String ActorInterface { get; set; }
+        public virtual String ActorInterface { get; set; }
 
         [MessagePack.Key(3)]
         public String ActorId { get; set; }
 
         [MessagePack.Key(4)]
-        public String ActorMethodName { get; set; }
+        public virtual String ActorMethodName { get; set; }
 
         [MessagePack.Key(5)]
         public List<byte[]> Arguments { get; set; }
@@ -40,6 +41,67 @@ namespace NanoActor
             this.ActorId = String.Empty;
         }
 
+
+    }
+
+    
+    public class LocalActorRequest:ActorRequest
+    {
+        
+        public MethodInfo ActorMethod { get; set; }
+
+        public object[] ArgumentObjects { get; set; }
+
+        public override string ActorInterface {
+            get{
+                return $"{this.ActorMethod.DeclaringType.Namespace}.{this.ActorMethod.DeclaringType.Name}";
+            }
+            set
+            {
+
+            }
+        }
+
+        public override string ActorMethodName
+        {
+            get
+            {
+                return this.ActorMethod.Name;
+            }
+            set
+            {
+
+            }
+        }
+
+        public LocalActorRequest():base()
+        {
+            
+        }
+
+        public ActorRequest ToRemote(ITransportSerializer _serializer)
+        {
+            var request = new ActorRequest();
+
+            List<byte[]> arguments = new List<byte[]>();
+            foreach (var argument in this.ArgumentObjects)
+            {
+                arguments.Add(_serializer.Serialize(argument));
+            }
+            request.Arguments = arguments;
+            request.ActorInterface = this.ActorInterface;
+            request.ActorMethodName = this.ActorMethod.Name;
+
+            request.ActorId = this.ActorId;
+            request.FireAndForget = this.FireAndForget;
+            request.FromClient = this.FromClient;
+            request.Id = this.Id;
+            request.WorkerActor = this.WorkerActor;
+
+            
+
+            return request;
+        }
 
     }
 }

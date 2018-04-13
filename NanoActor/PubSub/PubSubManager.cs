@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 
@@ -22,7 +23,7 @@ namespace NanoActor.PubSub
         IPubSub _pubsub;
         ITransportSerializer _serializer;
 
-        BufferBlock<PublishedMessage> _inputBuffer = new BufferBlock<PublishedMessage>();
+
 
         ConcurrentDictionary<string, PubSubSubscription> _subscriptions = new ConcurrentDictionary<string, PubSubSubscription>();
 

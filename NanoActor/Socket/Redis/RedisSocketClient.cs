@@ -40,7 +40,8 @@ namespace NanoActor.Socket.Redis
 
         ITelemetry _telemetry;
 
-        BufferBlock<SocketData> _inputBuffer = new BufferBlock<SocketData>();
+        public event EventHandler<DataReceivedEventArgs> DataReceived;
+
 
         public RedisSocketClient(
             IServiceProvider services,
@@ -90,7 +91,9 @@ namespace NanoActor.Socket.Redis
                 Data = message
             };
 
-            _inputBuffer.Post(socketData);
+            DataReceived?.Invoke(this, new DataReceivedEventArgs() { SocketData = socketData });
+
+        
 
         }
                 
@@ -116,10 +119,7 @@ namespace NanoActor.Socket.Redis
             
         }
 
-        public async Task<SocketData> Receive()
-        {
-            return await _inputBuffer.ReceiveAsync();
-        }
+       
 
         public async Task SendRequest(string stageId, byte[] data)
         {

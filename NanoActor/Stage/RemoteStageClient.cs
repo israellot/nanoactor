@@ -9,11 +9,13 @@ using NanoActor.Directory;
 using System.Threading;
 using NanoActor.Telemetry;
 using System.Linq;
+using System.Diagnostics;
+using NanoActor.Util;
 
 namespace NanoActor
 {
 
-    
+
 
     public class RemoteStageClient
     {
@@ -25,13 +27,13 @@ namespace NanoActor
         IStageDirectory _stageDirectory;
         RemoteStageServer _stageServer;
         ITelemetry _telemetry;
-       
-
-        ConcurrentDictionary<string, BufferBlock<ActorResponse>> _localResponseBuffer = new ConcurrentDictionary<string, BufferBlock<ActorResponse>>();
-        ConcurrentDictionary<string, BufferBlock<ActorResponse>> _serverResponseBuffer = new ConcurrentDictionary<string, BufferBlock<ActorResponse>>();
-        ConcurrentDictionary<string, SemaphoreSlim> _pingResponseBuffer = new ConcurrentDictionary<string, SemaphoreSlim>();
 
 
+        ConcurrentDictionary<Guid, Tuple<SemaphoreSlim, ActorResponse>> _localResponseBuffer = new ConcurrentDictionary<Guid, Tuple<SemaphoreSlim, ActorResponse>>();
+        ConcurrentDictionary<Guid, Tuple<SemaphoreSlim, ActorResponse>> _serverResponseBuffer = new ConcurrentDictionary<Guid, Tuple<SemaphoreSlim, ActorResponse>>();
+        ConcurrentDictionary<Guid, SemaphoreSlim> _pingResponseBuffer = new ConcurrentDictionary<Guid, SemaphoreSlim>();
+
+        ObjectPool<SemaphoreSlim> _semaphorePool = new ObjectPool<SemaphoreSlim>(()=>new SemaphoreSlim(0,1));
 
         public RemoteStageClient(
             IServiceProvider services,
@@ -66,31 +68,34 @@ namespace NanoActor
         public void ProcessServerInput()
         {
 
-            Task.Run(async () =>
+            _socketClient.DataReceived += (s, e) =>
             {
 
-                while (true)
+                Task.Run(() =>
                 {
                     try
                     {
-                        var received = await _socketClient.Receive();
+                        var received = e.SocketData;
 
                         if (received.Data != null)
                         {
                             var remoteMessage = _serializer.Deserialize<RemoteStageMessage>(received.Data);
 
-                            if (remoteMessage.MessageType==RemoteMessageType.ActorResponse)
+                            if (remoteMessage.MessageType == RemoteMessageType.ActorResponse)
                             {
-                                if (_serverResponseBuffer.TryGetValue(remoteMessage.ActorResponse.Id.ToString(), out var buffer))
+                                var messageId = remoteMessage.ActorResponse.Id;
+                                if (_serverResponseBuffer.TryGetValue(messageId, out var queueItem))
                                 {
-                                    buffer.Post(remoteMessage.ActorResponse);
+                                    var semaphore = queueItem.Item1;
+                                    _serverResponseBuffer[messageId] = new Tuple<SemaphoreSlim, ActorResponse>(queueItem.Item1, remoteMessage.ActorResponse);
+                                    semaphore.Release();
                                 }
 
-                                
+
                             }
-                            if (remoteMessage.MessageType==RemoteMessageType.PingResponse)
+                            if (remoteMessage.MessageType == RemoteMessageType.PingResponse)
                             {
-                                if (_pingResponseBuffer.TryGetValue(remoteMessage.Ping.Id.ToString(), out var semaphore))
+                                if (_pingResponseBuffer.TryGetValue(remoteMessage.Ping.Id, out var semaphore))
                                 {
                                     semaphore.Release();
                                 }
@@ -104,21 +109,21 @@ namespace NanoActor
                     {
                         _telemetry.Exception(ex);
                     }
+                }).ConfigureAwait(false);
 
-                }
-
-            }).ConfigureAwait(false);
-
+            };
 
         }
 
         public void ServerResponse(ActorResponse response)
         {
-
-            if(_localResponseBuffer.TryGetValue(response.Id.ToString(),out var buffer)){
-                buffer.Post(response);
+            if (_localResponseBuffer.TryGetValue(response.Id, out var queueItem))
+            {
+                var semaphore = queueItem.Item1;
+                _localResponseBuffer[response.Id] = new Tuple<SemaphoreSlim, ActorResponse>(queueItem.Item1, response);
+                semaphore.Release();
             }
-            
+
         }
 
         public async Task<ActorResponse> SendActorRequest(ActorRequest request, TimeSpan? timeout = null)
@@ -136,19 +141,40 @@ namespace NanoActor
                 }
                 else
                 {
-                    var buffer = _localResponseBuffer.GetOrAdd(request.Id.ToString(), new BufferBlock<ActorResponse>());
+                    var semaphore = _semaphorePool.GetObject();
+                    while (semaphore.CurrentCount > 0) semaphore.Wait();
 
-                    await _stageServer.ReceivedActorRequest(request, null);
+                    var queueItem = _localResponseBuffer[request.Id] = new Tuple<SemaphoreSlim, ActorResponse>(semaphore, null);
 
-                    
-                    var response = await buffer.ReceiveAsync(timeout.Value);
+                    try
+                    {
+                        await _stageServer.ReceivedActorRequest(request, null);
 
-                    buffer.Complete();
-                    _localResponseBuffer.TryRemove(request.Id.ToString(), out _);
+                        var responseArrived = await semaphore.WaitAsync(timeout.Value);
 
-                    return response;
+                        if (responseArrived)
+                        {
+                            if (_localResponseBuffer.TryRemove(request.Id, out queueItem))
+                            {
+                                if (queueItem.Item2 != null)
+                                {
+                                    return queueItem.Item2;
+                                }
+                            }
+                        }
+
+                        _localResponseBuffer.TryRemove(request.Id, out _);
+                        throw new TimeoutException();
+                    }
+                    finally
+                    {
+                        _semaphorePool.PutObject(semaphore);
+
+                    }
+
+
                 }
-              
+
             }
             else
             {
@@ -159,13 +185,13 @@ namespace NanoActor
 
             }
 
-            
+
         }
 
         public async Task<ActorResponse> SendRemoteActorRequest(ActorRequest request, TimeSpan? timeout = null)
         {
 
-            
+
             if (request.WorkerActor)
             {
                 var allStages = await _stageDirectory.GetAllStages();
@@ -185,12 +211,15 @@ namespace NanoActor
                 }
 
             }
-           
-            
+
+
         }
 
         public async Task<ActorResponse> SendRemoteActorRequest(String stageId, ActorRequest request, TimeSpan? timeout = null)
         {
+
+            if (request is LocalActorRequest)
+                request = ((LocalActorRequest)request).ToRemote(_serializer);
 
             var message = new RemoteStageMessage()
             {
@@ -206,32 +235,54 @@ namespace NanoActor
             }
             else
             {
-                var buffer = _serverResponseBuffer.GetOrAdd(request.Id.ToString(), new BufferBlock<ActorResponse>());
+                var semaphore = _semaphorePool.GetObject();
+                while (semaphore.CurrentCount > 0) semaphore.Wait();
 
-                await _socketClient.SendRequest(stageId, _serializer.Serialize(message));
+                var queueItem = _serverResponseBuffer[request.Id] = new Tuple<SemaphoreSlim, ActorResponse>(semaphore, null);
 
-                var response = await buffer.ReceiveAsync(timeout ?? TimeSpan.FromMilliseconds(-1));
+                try
+                {
+                    await _socketClient.SendRequest(stageId, _serializer.Serialize(message));
 
-                buffer.Complete();
-                _serverResponseBuffer.TryRemove(request.Id.ToString(), out _);
+                    var responseArrived = await semaphore.WaitAsync(timeout ?? TimeSpan.FromMilliseconds(-1));
+                   
+                    if (responseArrived)
+                    {
+                        if (_serverResponseBuffer.TryRemove(request.Id, out queueItem))
+                        {
+                            return queueItem.Item2;
+                        }
+                    }
 
-                return response;
+                    _serverResponseBuffer.TryRemove(request.Id, out _);
+                    throw new TimeoutException();
+                }
+                finally
+                {
+                    _semaphorePool.PutObject(semaphore);
+                }
+
+               
+
             }
 
         }
 
-         
+
 
         public async Task<TimeSpan?> PingStage(String stageId)
         {
-            
+
             var message = new RemoteStageMessage()
-            {               
+            {
                 MessageType = RemoteMessageType.PingRequest,
                 Ping = new Ping()
             };
 
-            var semaphore = _pingResponseBuffer.GetOrAdd(message.Ping.Id.ToString(), new SemaphoreSlim(0,1));
+
+            var semaphore = _pingResponseBuffer[message.Ping.Id] = _semaphorePool.GetObject();
+
+            var sw = Stopwatch.StartNew();
 
             try
             {
@@ -239,7 +290,9 @@ namespace NanoActor
 
                 if (await semaphore.WaitAsync(1000))
                 {
-                    return TimeSpan.FromMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - message.Ping.Timestamp);
+                    sw.Stop();
+                    return sw.Elapsed;
+                    //return TimeSpan.FromTicks(DateTimeOffset.UtcNow.Ticks - message.Ping.Timestamp);
                 }
                 else
                 {
@@ -252,9 +305,11 @@ namespace NanoActor
             }
             finally
             {
-                _pingResponseBuffer.TryRemove(message.Ping.Id.ToString(), out _);
+                _semaphorePool.PutObject(semaphore);
+                _pingResponseBuffer.TryRemove(message.Ping.Id, out _);
+                sw.Stop();
             }
-            
+
         }
 
     }

@@ -49,7 +49,7 @@ namespace NanoActor
             _memoryCache = new MemoryCache(cacheOptions);
 
             _databaseLazy = new Lazy<IDatabase>(() => {
-                return _connectionFactory.GetDatabase().WithKeyPrefix($"{_serviceOptions.ServiceName}");
+                return _connectionFactory.GetDatabase().WithKeyPrefix($"{_serviceOptions.ServiceName}-");
             });
 
             _scriptsLazy = new Lazy<RedisScripts>(() => { return new RedisScripts(_database); });
@@ -131,18 +131,21 @@ namespace NanoActor
 
         public async Task RemoveStage(string stageId)
         {
-            var all = await _database.HashGetAllAsync(_actorDirectoryKey);
 
-            var liveStages = await _stageDirectory.GetAllStages(true);
+            await _scripts.HashDeleteIfEqual(_actorDirectoryKey, stageId);
 
-            foreach(var entry in all)
-            {
-                var compareStageId = (string)entry.Value;
-                if(compareStageId == stageId || !liveStages.Contains(compareStageId))
-                {
-                    await _scripts.HashDeleteIfEqual(_actorDirectoryKey, entry.Name, entry.Value);
-                }
-            }
+            //var all = await _database.HashGetAllAsync(_actorDirectoryKey);
+
+            //var liveStages = await _stageDirectory.GetAllStages(true);
+
+            //foreach(var entry in all)
+            //{
+            //    var compareStageId = (string)entry.Value;
+            //    if(compareStageId == stageId || !liveStages.Contains(compareStageId))
+            //    {
+            //        await _scripts.HashDeleteIfEqual(_actorDirectoryKey, entry.Name, entry.Value);
+            //    }
+            //}
         }
             
         public async Task UnregisterActor(string actorTypeName,string actorId, string stageId)

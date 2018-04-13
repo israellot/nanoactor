@@ -13,6 +13,7 @@ using NanoActor.Telemetry;
 using Microsoft.Extensions.Options;
 using NanoActor.Options;
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace NanoActor.ActorProxy
 {
@@ -20,8 +21,7 @@ namespace NanoActor.ActorProxy
     public class ProxyFactory
     {
         IServiceProvider _services;
-
-
+        
         ProxyGenerator _proxyGenerator;
 
         PubSubManager _pubsub;
@@ -30,30 +30,63 @@ namespace NanoActor.ActorProxy
 
         ITransportSerializer _serializer;
 
-      
+        IOptions<NanoServiceOptions> _serviceOptions;
 
-        public ProxyFactory(IServiceProvider services,ITelemetry<ProxyFactory> telemetry, PubSubManager pubsub,ITransportSerializer serializer)
+        IMemoryCache _cache;
+
+        public ProxyFactory(
+            IServiceProvider services,
+            ITelemetry<ProxyFactory> telemetry,
+            PubSubManager pubsub,
+            ITransportSerializer serializer,
+            IOptions<NanoServiceOptions> options
+            )
         {
             _pubsub = pubsub;
             _services = services;
             _serializer = serializer;
             _telemetry = telemetry;
             _proxyGenerator = new ProxyGenerator();
+            _serviceOptions = options;
+            _cache = new MemoryCache(Microsoft.Extensions.Options.Options.Create(new MemoryCacheOptions() { }));
         }
-                                
 
+        private object _getProxySyncRoot = new object();
         public T GetProxy<T>(string id = null,TimeSpan? timeout=null,Boolean fireAndForget=false) where T : class
         {
-            var telemetry = _services.GetRequiredService<ITelemetry<T>>();
-            var serviceOptions = _services.GetRequiredService<IOptions<NanoServiceOptions>>();
+            //var telemetry = _services.GetRequiredService<ITelemetry<T>>();
+            //var serviceOptions = _services.GetRequiredService<IOptions<NanoServiceOptions>>();
 
-           
+            var key = new Tuple<Type, string, TimeSpan?, Boolean>(typeof(T), id, timeout, fireAndForget);
+
+            if(!_cache.TryGetValue<T>(key,out var proxy)){
+              
+                lock (_getProxySyncRoot)
+                {
+                    if (!_cache.TryGetValue<T>(key, out proxy))
+                    {
+                        proxy = CreateProxy<T>(id, timeout, fireAndForget);
+                        _cache.Set(key, proxy, new MemoryCacheEntryOptions()
+                        {
+                            SlidingExpiration = TimeSpan.FromMinutes(30)
+                        });
+                    }
+                }
+            }
+                        
+            return proxy;
+        }
+                
+        protected T CreateProxy<T>(string id = null, TimeSpan? timeout = null, Boolean fireAndForget = false) where T : class
+        {
+            //var telemetry = _services.GetRequiredService<ITelemetry<T>>();
+            //var serviceOptions = _services.GetRequiredService<IOptions<NanoServiceOptions>>();
 
             var _remoteInterceptor = new RemoteActorMethodInterceptor(
                    _services.GetRequiredService<RemoteStageClient>(),
-                   telemetry,
+                   _telemetry,
                    _serializer,
-                   serviceOptions,
+                   _serviceOptions,
                    timeout,
                    fireAndForget).ToInterceptor();
 

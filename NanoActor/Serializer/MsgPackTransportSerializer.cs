@@ -35,7 +35,7 @@ namespace NanoActor
             if (data == null)
                 return default(T);
             try
-            {
+            {                
                 return LZ4MessagePackSerializer.Deserialize<T>(data, CustomCompositeResolver.Instance);
             }
             catch(Exception ex)
@@ -53,9 +53,22 @@ namespace NanoActor
             
         }
 
+        private object _deserializeSyncObject = new object();
+        private Dictionary<Type, MethodInfo> _deserializeMethodCache = new Dictionary<Type, MethodInfo>();
+
         public object Deserialize(Type type,byte[] data)
-        {
-            var methodInfo = _genericDeserializer.MakeGenericMethod(type);
+        {            
+            if (!_deserializeMethodCache.TryGetValue(type, out var methodInfo))
+            {
+                lock (_deserializeSyncObject)
+                {
+                    if (!_deserializeMethodCache.TryGetValue(type, out methodInfo))
+                    {
+                        methodInfo = _genericDeserializer.MakeGenericMethod(type);
+                        _deserializeMethodCache[type] = methodInfo;
+                    }
+                }
+            }
 
             var obj = methodInfo.Invoke(this, new[] { data });
 
@@ -77,12 +90,28 @@ namespace NanoActor
          
         }
 
+        private object _serializeSyncObject = new object();
+
+        private Dictionary<Type, MethodInfo> _serializeMethodCache = new Dictionary<Type, MethodInfo>();
+
         public byte[] Serialize(object o)
         {
             if (o == null)
                 return LZ4MessagePackSerializer.Serialize<Object>(null);
 
-            var methodInfo = _genericSerializer.MakeGenericMethod(o.GetType());
+            var type = o.GetType();
+
+            if (!_serializeMethodCache.TryGetValue(type,out var methodInfo))
+            {
+                lock (_serializeSyncObject)
+                {
+                    if (!_serializeMethodCache.TryGetValue(type, out methodInfo))
+                    {
+                        methodInfo = _genericSerializer.MakeGenericMethod(type);
+                        _serializeMethodCache[type] = methodInfo;
+                    }
+                }
+            }
 
             var data = (Byte[])methodInfo.Invoke(this, new[] { o });
 

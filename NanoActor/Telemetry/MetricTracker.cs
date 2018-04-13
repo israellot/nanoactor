@@ -29,5 +29,23 @@ namespace NanoActor.Telemetry
             metric.Value.TrackValue(value);
         }
 
+        public TimingMetricTracker TrackTiming()
+        {
+            return new TimingMetricTracker(this);
+        }
+
+    }
+
+    public class TimingMetricTracker : StopwatchTracker
+    {
+        private MetricTracker _metricTracker;
+        public TimingMetricTracker(MetricTracker metricTracker)
+        {
+            _metricTracker = metricTracker;
+        }
+        protected override void Sink(DateTimeOffset startTimestamp, TimeSpan elapsed, bool success)
+        {
+            _metricTracker.Track(elapsed.TotalMilliseconds);
+        }
     }
 }

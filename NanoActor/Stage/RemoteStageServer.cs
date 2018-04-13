@@ -28,7 +28,6 @@ namespace NanoActor
         String _ownStageId;
 
         Lazy<RemoteStageClient> _remoteClient;
-        ConcurrentDictionary<Guid, BufferBlock<ActorResponse>> responseQueues = new ConcurrentDictionary<Guid, BufferBlock<ActorResponse>>();
 
         ConcurrentDictionary<string, ConcurrentQueue<Tuple<ActorRequest, string>>> _pausedActorMessageQueues = new ConcurrentDictionary<string, ConcurrentQueue<Tuple<ActorRequest, string>>>();
 
@@ -105,7 +104,7 @@ namespace NanoActor
             //unregister stage
             _stageDirectory.UnregisterStage(_ownStageId);
 
-            Thread.Sleep(5000);
+            Thread.Sleep(1000);
 
             foreach (var queue in _pausedActorMessageQueues)
             {
@@ -115,7 +114,7 @@ namespace NanoActor
                 }
             }
 
-            Thread.Sleep(5000);
+            Thread.Sleep(1000);
 
         }
 
@@ -123,66 +122,56 @@ namespace NanoActor
         public void ProcessServerInput()
         {
 
-            foreach(var i in Enumerable.Range(0, 10))
-            {
+            _socketServer.DataReceived += (s, e) => {
 
-                Task.Factory.StartNew(async () =>
+                Task.Run(() =>
                 {
-
-                    while (true)
+                    try
                     {
-                        try
+                        var received = e.SocketData;
+
+                        Interlocked.Increment(ref _inputProccessBacklog);
+
+                        if (received.Data != null)
                         {
-                            var received = await _socketServer.Receive();
+                            var remoteMessage = _serializer.Deserialize<RemoteStageMessage>(received.Data);
 
-                            
-
-                            Interlocked.Increment(ref _inputProccessBacklog);
-
-                            if (received.Data != null)
+                            if (remoteMessage == null)
                             {
-                                var remoteMessage = _serializer.Deserialize<RemoteStageMessage>(received.Data);
-
-                                if (remoteMessage == null)
-                                {
-                                    Interlocked.Decrement(ref _inputProccessBacklog);
-                                    return;
-                                }
-
-                                if (remoteMessage.MessageType==RemoteMessageType.ActorResponse)
-                                {
-                                    ReceivedActorResponse(remoteMessage.ActorResponse);
-                                }
-                                if (remoteMessage.MessageType==RemoteMessageType.ActorRequest)
-                                {
-                                    Task.Factory.StartNew(() =>
-                                    {
-                                        return ReceivedActorRequest(remoteMessage.ActorRequest, received.StageId);
-                                    }, TaskCreationOptions.PreferFairness);
-
-                                }
-                                if (remoteMessage.MessageType==RemoteMessageType.PingRequest)
-                                {
-                                    await ProcessPingRequest(received.StageId, remoteMessage.Ping).ConfigureAwait(false);
-                                }
-
                                 Interlocked.Decrement(ref _inputProccessBacklog);
+                                return;
                             }
 
+                            if (remoteMessage.MessageType == RemoteMessageType.ActorResponse)
+                            {
+                                //ReceivedActorResponse(remoteMessage.ActorResponse);
+
+                                //should get responses in server, drop
+                            }
+                            if (remoteMessage.MessageType == RemoteMessageType.ActorRequest)
+                            {
+                                var processTask = ReceivedActorRequest(remoteMessage.ActorRequest, received.StageId).ConfigureAwait(false);
+
+                            }
+                            if (remoteMessage.MessageType == RemoteMessageType.PingRequest)
+                            {
+                                var processTask = ProcessPingRequest(received.StageId, remoteMessage.Ping).ConfigureAwait(false);
+
+                            }
+
+                            Interlocked.Decrement(ref _inputProccessBacklog);
+                        }
 
 
-                        }
-                        catch (Exception ex)
-                        {
-                            _telemetry.Exception(ex);
-                        }
 
                     }
+                    catch (Exception ex)
+                    {
+                        _telemetry.Exception(ex);
+                    }
+                }).ConfigureAwait(false);
 
-                },TaskCreationOptions.LongRunning);
-
-
-            }
+            };
 
           
 
@@ -273,13 +262,17 @@ namespace NanoActor
 
                                     if (count > 5)
                                     {
-                                        await _stageDirectory.UnregisterStage(_stageRef);
-                                        await _actorDirectory.RemoveStage(_stageRef);
+                                        Task.Run(async () =>
+                                        {
+                                            await _stageDirectory.UnregisterStage(_stageRef);
+                                            await _actorDirectory.RemoveStage(_stageRef);
 
-                                        _logger.LogDebug("Stage {0} removed", _stageRef, count);
-                                        _missedPings.TryRemove(_stageRef, out _);
+                                            _logger.LogDebug("Stage {0} removed", _stageRef, count);
+                                            _missedPings.TryRemove(_stageRef, out _);
 
-                                        _metrics.TryRemove(_stageRef, out _);
+                                            _metrics.TryRemove(_stageRef, out _);
+                                        }).ConfigureAwait(false);
+                                        
                                     }
                                 }
                                 else
@@ -289,7 +282,6 @@ namespace NanoActor
                                             {"FromStage",_ownStageId},
                                             {"ToStage",_stageRef }
                                         }));
-
 
                                     metric.Track(pingResponse.Value.TotalMilliseconds);
 
@@ -442,16 +434,6 @@ namespace NanoActor
 
         }
 
-        public void ReceivedActorResponse(ActorResponse response)
-        {
-            if (responseQueues.TryGetValue(response.Id, out var buffer))
-            {
-                buffer.Post(response);
-            }
-
-          
-        }
-
         protected async Task ProcessActorRequestLocally(ActorRequest message, string sourceStageId)
         {
             ActorResponse response = null;
@@ -488,8 +470,9 @@ namespace NanoActor
             }
             else
             {
-                var message = new RemoteStageMessage() {MessageType=RemoteMessageType.ActorResponse, ActorResponse = response };
-
+                var message = new RemoteStageMessage() {
+                    MessageType =RemoteMessageType.ActorResponse,
+                    ActorResponse = response };
 
                 await this.SendMessage(stageId, message);
             }
@@ -524,10 +507,7 @@ namespace NanoActor
             return (Int32)_inputProccessBacklog;
         }
 
-        public Int32 SocketMessageBacklog()
-        {
-            return _socketServer.InboundBacklogCount();
-        }
+     
 
     }
 }

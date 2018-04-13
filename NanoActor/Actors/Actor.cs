@@ -14,6 +14,7 @@ using System.Threading.Tasks.Dataflow;
 using NanoActor.Options;
 using Microsoft.Extensions.Options;
 using NanoActor.Telemetry;
+using System.Diagnostics;
 
 namespace NanoActor
 {
@@ -33,8 +34,6 @@ namespace NanoActor
 
         List<ActorTimer> _timers = new List<ActorTimer>();
 
-        BufferBlock<ActorRequest> _requestBuffer = new BufferBlock<ActorRequest>();
-
         public String Id { get; set; }
 
         protected ProxyFactory ProxyFactory;
@@ -49,6 +48,8 @@ namespace NanoActor
 
         ITelemetry _telemetry;
 
+        String _typeName;
+
         public event EventHandler DeactivateRequested;
 
         public Actor(IServiceProvider _serviceProvider)
@@ -60,6 +61,8 @@ namespace NanoActor
             _telemetry = _serviceProvider.GetService<ITelemetry>();
 
             _options = options.Value ?? new NanoServiceOptions();
+
+            _typeName = this.GetType().Name;
         }
 
         protected virtual void DeactivateRequest()
@@ -160,7 +163,7 @@ namespace NanoActor
         public async Task<object> Post(ITransportSerializer serializer,ActorRequest message,TimeSpan? timeout=null,CancellationToken? ct=null)
         {
 
-            var key = $"{this.GetType().Name}.{message.ActorMethodName}";
+            var key = $"{_typeName}.{message.ActorMethodName}";
 
             if (!_methodCache.TryGetValue(key, out var method))
             {
@@ -182,19 +185,41 @@ namespace NanoActor
 
             var parameters = method.GetParameters();
 
+            //wire parameters
             List<object> arguments = new List<object>();
-            for (var i = 0; i < parameters.Length; i++)
+            if (message is LocalActorRequest)
             {
-                var parameterInfo = parameters[i];     
-                if(message.Arguments.Count > i)
+                var localMessage = (LocalActorRequest)message;
+                for (var i = 0; i < parameters.Length; i++)
                 {
-                    arguments.Add(serializer.Deserialize(parameterInfo.ParameterType, message.Arguments[i]));
-                }
-                else
-                {
-                    arguments.Add(Type.Missing);
+                    var parameterInfo = parameters[i];
+                    if (localMessage.ArgumentObjects.Length > i)
+                    {
+                        arguments.Add(localMessage.ArgumentObjects[i]);
+                    }
+                    else
+                    {
+                        arguments.Add(Type.Missing);
+                    }
                 }
             }
+            else
+            {
+                for (var i = 0; i < parameters.Length; i++)
+                {
+                    var parameterInfo = parameters[i];
+                    if (message.Arguments.Count > i)
+                    {
+                        arguments.Add(serializer.Deserialize(parameterInfo.ParameterType, message.Arguments[i]));
+                    }
+                    else
+                    {
+                        arguments.Add(Type.Missing);
+                    }
+                }
+            }
+
+         
 
             Task workTask = null;
 
@@ -207,23 +232,24 @@ namespace NanoActor
 
                     if (timeout.HasValue)
                     {
-                        var timeoutTask = Task.Delay(timeout.Value);
+                        //var timeoutTask = Task.Delay(timeout.Value);
+
+                        var sw = Stopwatch.StartNew();
 
                         //try to acquire lock
-                        var asyncLockTask = _executionLock.LockAsync();
-                        await Task.WhenAny(asyncLockTask, timeoutTask);
+                        var asyncLock = await _executionLock.LockAsync(timeout.Value);
 
-                        if (timeoutTask.IsCompleted && !asyncLockTask.IsCompleted)
+                        if (asyncLock == null)
                             throw new TimeoutException();
 
-                        var asyncLock = asyncLockTask.Result;
+                        sw.Stop();
+
+                        var remainingMs = timeout.Value.TotalMilliseconds - sw.Elapsed.TotalMilliseconds;
 
                         //try to run method
                         workTask = (Task)method.Invoke(this, arguments.ToArray());
-                        await Task.WhenAny(workTask, timeoutTask);
 
-                        if (timeoutTask.IsCompleted && !workTask.IsCompleted)
-                            throw new TimeoutException();
+                        var r = workTask.TimeoutAfter((int)remainingMs);
 
                         if (asyncLock != null)
                             asyncLock.Dispose();
@@ -238,7 +264,6 @@ namespace NanoActor
 
                         if (asyncLock != null)
                             asyncLock.Dispose();
-
                         
                     }
 
@@ -249,11 +274,8 @@ namespace NanoActor
             else
             {
                 workTask = (Task)method.Invoke(this, arguments.ToArray());
-
             }
-
-
-
+                        
 
             if (!_returnPropertyCache.TryGetValue(key, out var resultProperty))
             {
@@ -262,7 +284,6 @@ namespace NanoActor
                     resultProperty = workTask.GetType().GetProperty("Result");
 
                     _returnPropertyCache.TryAdd(key, resultProperty);
-
 
                 }
                 else
@@ -274,15 +295,12 @@ namespace NanoActor
             if (resultProperty != null)
             {
                 var result = resultProperty.GetValue(workTask);
-
                 return result;
             }
             else
             {
                 return null;
             }
-
-
 
 
         }
