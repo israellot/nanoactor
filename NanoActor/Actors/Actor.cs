@@ -63,6 +63,10 @@ namespace NanoActor
             _options = options.Value ?? new NanoServiceOptions();
 
             _typeName = this.GetType().Name;
+
+
+       
+
         }
 
         protected virtual void DeactivateRequest()
@@ -219,8 +223,6 @@ namespace NanoActor
                 }
             }
 
-         
-
             Task workTask = null;
 
             var sync = method.GetCustomAttribute<AllowParallel>(true) == null;
@@ -229,11 +231,8 @@ namespace NanoActor
             {
                 Interlocked.Increment(ref _queueCount);
                 {
-
                     if (timeout.HasValue)
                     {
-                        //var timeoutTask = Task.Delay(timeout.Value);
-
                         var sw = Stopwatch.StartNew();
 
                         //try to acquire lock
@@ -242,17 +241,25 @@ namespace NanoActor
                         if (asyncLock == null)
                             throw new TimeoutException();
 
-                        sw.Stop();
+                        try
+                        {
+                            sw.Stop();
 
-                        var remainingMs = timeout.Value.TotalMilliseconds - sw.Elapsed.TotalMilliseconds;
+                            //try to run method
+                            var timeoutTask = Task.Delay(timeout.Value - sw.Elapsed);
 
-                        //try to run method
-                        workTask = (Task)method.Invoke(this, arguments.ToArray());
+                            workTask = (Task)method.Invoke(this, arguments.ToArray());
+                            await Task.WhenAny(workTask, timeoutTask);
 
-                        var r = workTask.TimeoutAfter((int)remainingMs);
-
-                        if (asyncLock != null)
-                            asyncLock.Dispose();
+                            if (timeoutTask.IsCompleted && !workTask.IsCompleted)
+                                throw new TimeoutException();
+                        }
+                        finally
+                        {
+                            if (asyncLock != null)
+                                asyncLock.Dispose();
+                        }
+                       
                     }
                     else
                     {
@@ -292,7 +299,7 @@ namespace NanoActor
                 }
             }
 
-            if (resultProperty != null)
+            if (resultProperty != null && workTask!=null)
             {
                 var result = resultProperty.GetValue(workTask);
                 return result;

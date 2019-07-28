@@ -10,11 +10,11 @@ namespace NanoActor
                 
         Task<Boolean> RegisterStage(string stageId);
 
-        Task<Boolean> IsLive(string stageId);
+        ValueTask<Boolean> IsLive(string stageId);
 
         Task UnregisterStage(string stageId);
 
-        Task<List<string>> GetAllStages(Boolean forceUpdate=false);
+        ValueTask<List<string>> GetAllStages(Boolean forceUpdate=false);
 
 
     }

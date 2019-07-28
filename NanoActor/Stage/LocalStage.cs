@@ -109,12 +109,15 @@ namespace NanoActor
         }
 
         public void Run()
-        {
-            
+        {            
             this.Enabled = true;
+
+
 
             LocalMonitorTask();
         }
+
+       
 
         public void DeactivateInstance(string key)
         {
@@ -153,15 +156,21 @@ namespace NanoActor
                         .ForAll(key => {
                             if (_actorInstances.TryGetValue(key, out var instance))
                             {
-                                if (now - instance.LastAccess > TimeSpan.FromSeconds(_serviceOptions.DefaultActorTTL))
-                                {
-                                    _actorInstances.TryRemove(key, out _);
-                                    _logger.LogDebug("Deactivated instance for {0}. Actor Id : {1}. No activity", instance.ActorTypeName, instance.ActorId);
-                                    instance.Instance.Dispose();
-                                    instance = null;
+                                var alwaysOn = instance.Instance.GetType().GetCustomAttribute<AlwaysOn>(true) != null;
 
-                                    _deactivatedInstancesMeter.Tick();
+                                if (!alwaysOn)
+                                {
+                                    if (now - instance.LastAccess > TimeSpan.FromSeconds(_serviceOptions.DefaultActorTTL))
+                                    {
+                                        _actorInstances.TryRemove(key, out _);
+                                        _logger.LogDebug("Deactivated instance for {0}. Actor Id : {1}. No activity", instance.ActorTypeName, instance.ActorId);
+                                        instance.Instance.Dispose();
+                                        instance = null;
+
+                                        _deactivatedInstancesMeter.Tick();
+                                    }
                                 }
+                              
                             }
                         });
 
@@ -360,7 +369,7 @@ namespace NanoActor
             var actorInstanceKey = string.Join(",", message.ActorInterface, message.ActorId);
 
             var actorInstance = await ActivateInstance(message.ActorInterface, message.ActorId);
-
+            
             actorInstance.LastAccess = DateTimeOffset.UtcNow;
 
 

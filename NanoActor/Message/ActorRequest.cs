@@ -12,28 +12,28 @@ namespace NanoActor
     public class ActorRequest
     {
 
-        [MessagePack.Key(0)]
+        [Key(0)]
         public Guid Id { get; set; }
 
-        [MessagePack.Key(1)]
+        [Key(1)]
         public Boolean FireAndForget { get; set; }
 
-        [MessagePack.Key(2)]
+        [Key(2)]
         public virtual String ActorInterface { get; set; }
 
-        [MessagePack.Key(3)]
+        [Key(3)]
         public String ActorId { get; set; }
 
-        [MessagePack.Key(4)]
+        [Key(4)]
         public virtual String ActorMethodName { get; set; }
 
-        [MessagePack.Key(5)]
+        [Key(5)]
         public List<byte[]> Arguments { get; set; }
 
-        [MessagePack.Key(6)]
+        [Key(6)]
         public Boolean FromClient { get; set; }
 
-        [MessagePack.Key(7)]
+        [Key(7)]
         public Boolean WorkerActor { get; set; }
 
         public ActorRequest() {

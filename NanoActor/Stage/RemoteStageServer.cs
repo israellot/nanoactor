@@ -29,11 +29,11 @@ namespace NanoActor
 
         Lazy<RemoteStageClient> _remoteClient;
 
-        ConcurrentDictionary<string, ConcurrentQueue<Tuple<ActorRequest, string>>> _pausedActorMessageQueues = new ConcurrentDictionary<string, ConcurrentQueue<Tuple<ActorRequest, string>>>();
-
         volatile Int32 _inputProccessBacklog = 0;
 
         volatile Int32 _paused = 0;
+
+        SemaphoreSlim _exitSemaphore = new SemaphoreSlim(0, 1);
 
         ILogger _logger;
 
@@ -88,6 +88,7 @@ namespace NanoActor
 
             SelfMonitor();
 
+            await _exitSemaphore.WaitAsync();
         }
 
         public void Stop()
@@ -95,27 +96,15 @@ namespace NanoActor
             //pause incomming queues
             Interlocked.Exchange(ref _paused, 1);
 
-            //stop local stage
-            _localStage.Stop();
-
-            //forward all requests from now on
-            _localStage.Enabled = false;
-            
+                       
             //unregister stage
             _stageDirectory.UnregisterStage(_ownStageId);
 
-            Thread.Sleep(1000);
-
-            foreach (var queue in _pausedActorMessageQueues)
-            {
-                while (queue.Value.TryDequeue(out var request))
-                {
-                    this.ReceivedActorRequest(request.Item1, request.Item2);
-                }
-            }
+            _actorDirectory.RemoveStage(_ownStageId);
 
             Thread.Sleep(1000);
 
+            _exitSemaphore.Release();
         }
 
 
@@ -191,15 +180,21 @@ namespace NanoActor
                     {
                         var stages = await _stageDirectory.GetAllStages();
 
+                        if (_paused>0)
+                            break;
+
                         if (!stages.Contains(_ownStageId))
                         {
                             //others have signaled this stage as dead
 
                             //clear local stage
-                            await _localStage.Stop();
+                            //await _localStage.Stop();
+
+                            _exitSemaphore.Release();
 
                             //register again
-                            await _stageDirectory.RegisterStage(_localStage.StageGuid);
+                            //await _stageDirectory.RegisterStage(_localStage.StageGuid);
+
                         }
 
                     }
@@ -310,28 +305,9 @@ namespace NanoActor
             if (_localStage == null || !_localStage.Enabled)
             {
                 //we are inside a client, no point on getting actor requests
+                _exitSemaphore.Release(); 
                 return;
             }
-
-            var pausedQueueKey = string.Join(":", message.ActorInterface, message.ActorId);
-            if (!_pausedActorMessageQueues.TryGetValue(pausedQueueKey, out var queue))
-            {
-                if (_paused == 1 && _localStage.CanProcessMessage(message))
-                {
-                    var newQueue = new ConcurrentQueue<Tuple<ActorRequest, string>>();
-                    if (_pausedActorMessageQueues.TryAdd(pausedQueueKey, newQueue))
-                    {
-                        queue = newQueue;
-                    }
-                }
-            }
-            if (queue != null)
-            {
-                //actor is being delayed, queue
-                queue.Enqueue(new Tuple<ActorRequest, string>(message, sourceStageId));
-                return;
-            }
-         
 
             if (message.WorkerActor)
             {
@@ -397,40 +373,7 @@ namespace NanoActor
 
         public async Task RelocateActor(string actorTypeName, String actorId,String newStageId=null)
         {
-            var key = string.Join(":", actorTypeName, actorId);
-            var queue = new ConcurrentQueue<Tuple<ActorRequest,string>>();
-            if (_pausedActorMessageQueues.TryAdd(key, queue)){
-
-                try
-                {
-                    //wait idle
-                    await _localStage.WaitInstanceIdle(actorTypeName, actorId);
-
-                    if (newStageId == null)
-                    {
-                        newStageId = (await _stageDirectory.GetAllStages()).Where(s => s != _ownStageId).FirstOrDefault();
-
-                        if (newStageId == null)
-                            throw new Exception("No other stage running");
-
-                        //switch address
-                        await _actorDirectory.RegisterActor(actorTypeName, actorId, newStageId);
-                        await _actorDirectory.Refresh(actorTypeName, actorId);
-
-                        
-                    }
-                }
-                finally
-                {
-                    _pausedActorMessageQueues.TryRemove(key, out _);
-                    while (queue.TryDequeue(out var request))
-                    {
-                        this.ReceivedActorRequest(request.Item1, request.Item2);
-                    }
-                }
-                
-
-            }
+            
 
         }
 
@@ -488,7 +431,12 @@ namespace NanoActor
                 MessageType = RemoteMessageType.PingResponse
             };
 
-            return SendMessage(stageId, message);
+            if (_paused == 0)
+            {
+                return SendMessage(stageId, message);
+            }
+            else
+                return Task.FromResult(0);
 
         }
         

@@ -61,18 +61,7 @@ namespace NanoActor.Socket.Redis
 
             _guid = Guid.NewGuid().ToString();
 
-            ConfigurationOptions config = ConfigurationOptions.Parse(_redisOptions.ConnectionString);
-            config.ConnectTimeout = 10000;
-            config.ConnectRetry = 15;
-            config.ReconnectRetryPolicy = new LinearRetry(5000);
-            config.SyncTimeout = 5000;
-            config.ResponseTimeout = 10000;
             
-
-            _multiplexer = ConnectionMultiplexer.Connect(config);
-            _multiplexer.PreserveAsyncOrder = false;
-
-            _logger.LogInformation($"Client connected to Redis instance: {_multiplexer.IsConnected}");
 
             Listen();
         }
@@ -100,7 +89,48 @@ namespace NanoActor.Socket.Redis
 
         protected void Listen()
         {
-                                   
+
+            while (true)
+            {
+                try
+                {
+                    ConfigurationOptions config = ConfigurationOptions.Parse(_redisOptions.ConnectionString);
+                    config.ConnectTimeout = 10000;
+                    config.ConnectRetry = Int32.MaxValue;
+                    config.SyncTimeout = 2500;
+                    config.ResolveDns = true;
+
+                    _multiplexer = ConnectionMultiplexer.Connect(config);
+
+                    _multiplexer.InternalError += (sender, e) => {
+                        if (e.Exception != null)
+                            _telemetry.Exception(e.Exception);
+                    };
+
+                    _multiplexer.ConnectionFailed += (sender, e) => {
+                        if (e.Exception != null)
+                            _telemetry.Exception(e.Exception);
+                    };
+
+                    _multiplexer.ConnectionRestored += (sender, e) =>
+                    {
+                        if (e.Exception != null)
+                            _telemetry.Exception(e.Exception);
+                    };
+
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogCritical("Failed to connect to Redis");
+                }
+                
+            }
+            
+            _multiplexer.PreserveAsyncOrder = false;
+            _logger.LogInformation($"Client connected to Redis instance: {_multiplexer.IsConnected}");
+
+
             try
             {
                 _subscriber.Subscribe(new RedisChannel(_inputChannel,RedisChannel.PatternMode.Pattern), (c, v) => {
@@ -123,7 +153,8 @@ namespace NanoActor.Socket.Redis
 
         public async Task SendRequest(string stageId, byte[] data)
         {
-            
+            if (!_multiplexer.IsConnected)
+                throw new Exception("Redis not connected");
 
             if (String.IsNullOrEmpty(stageId))
             {

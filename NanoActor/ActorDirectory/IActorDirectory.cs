@@ -7,9 +7,8 @@ namespace NanoActor.Directory
 {
     public interface IActorDirectory
     {
-
-     
-        Task<StageAddressQueryResponse> GetAddress(string actorTypeName, string actorId);
+             
+        ValueTask<StageAddressQueryResponse> GetAddress(string actorTypeName, string actorId);
 
         Task RegisterActor(string actorTypeName, string actorId, string stageId);
 

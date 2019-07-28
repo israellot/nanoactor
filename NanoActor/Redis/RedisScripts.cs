@@ -1,20 +1,32 @@
 ﻿using StackExchange.Redis;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace NanoActor.Redis
 {
     public class RedisScripts
     {
-        public static readonly String _hashDeleteIfEqual = @"local c = redis.call('HGET', KEYS[1],ARGV[1]);
-                                                             if c == ARGV[2] then redis.call('HDEL',KEYS[1],ARGV[1]) return 1 else return 0 end";
+        public static readonly String _hashDeleteIfEqual = CompressLua(@"local c = redis.call('HGET', KEYS[1],ARGV[1]);
+                                                             if c == ARGV[2] then 
+                                                                redis.call('HDEL',KEYS[1],ARGV[1]) 
+                                                                 return 1
+                                                             else 
+                                                                 return 0 
+                                                             end");
 
-        public static readonly String _hashUpdateIfEqual = @"local c = redis.call('HGET', KEYS[1],ARGV[1]);
-                                                             if c == ARGV[2] then redis.call('HSET',KEYS[1],ARGV[1],ARGV[3]) return 1 else return 0 end";
+        public static readonly String _hashUpdateIfEqual = CompressLua(@"local c = redis.call('HGET', KEYS[1],ARGV[1]);
+                                                             if c == ARGV[2] then 
+                                                                redis.call('HSET',KEYS[1],ARGV[1],ARGV[3])
+                                                                return 1 
+                                                             else 
+                                                                return 
+                                                             0 end");
 
-        public static readonly String _hashDeleteAllByValue = @"local bulk = redis.call('HGETALL', KEYS[1])  
+        public static readonly String _hashDeleteAllByValue = CompressLua(@"local bulk = redis.call('HGETALL', KEYS[1])  
                                                                 local key
                                                                 local deleted=0
 	                                                            for i, v in ipairs(bulk) do
@@ -27,7 +39,7 @@ namespace NanoActor.Redis
                                                                         end
 		                                                            end
 	                                                            end
-	                                                            return deleted";
+	                                                            return deleted");
 
 
         IDatabase _database;
@@ -36,6 +48,16 @@ namespace NanoActor.Redis
             _database = database;
         }
 
+        
+
+        private static string CompressLua(string lua)
+        {
+            lua = new Regex("\t+").Replace(lua, " ");
+            lua = new Regex("[\r\n]").Replace(lua, " ");
+            lua = new Regex(" +").Replace(lua, " ");
+
+            return lua;
+        }
 
         public async Task<Boolean> HashDeleteIfEqual(string hashKey,string field, string value)
         {

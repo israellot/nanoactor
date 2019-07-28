@@ -59,8 +59,9 @@ namespace NanoActor.ActorProxy
 
             var key = new Tuple<Type, string, TimeSpan?, Boolean>(typeof(T), id, timeout, fireAndForget);
 
-            if(!_cache.TryGetValue<T>(key,out var proxy)){
-              
+            if (!_cache.TryGetValue<T>(key, out var proxy))
+            {
+
                 lock (_getProxySyncRoot)
                 {
                     if (!_cache.TryGetValue<T>(key, out proxy))
@@ -73,7 +74,9 @@ namespace NanoActor.ActorProxy
                     }
                 }
             }
-                        
+
+            //var proxy = CreateProxy<T>(id, timeout, fireAndForget);
+
             return proxy;
         }
                 

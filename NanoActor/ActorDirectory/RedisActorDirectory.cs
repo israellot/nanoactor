@@ -20,15 +20,13 @@ namespace NanoActor
 
         NanoServiceOptions _serviceOptions;
 
-        Lazy<IDatabase> _databaseLazy;
-
         ITransportSerializer _serializer;
 
         IStageDirectory _stageDirectory;
 
         IMemoryCache _memoryCache;
 
-        IDatabase _database => _databaseLazy.Value;
+        IDatabase _database => _connectionFactory.GetDatabase().WithKeyPrefix($"{_serviceOptions.ServiceName}-");
 
         Lazy<RedisScripts> _scriptsLazy;
         RedisScripts _scripts => _scriptsLazy.Value;
@@ -48,14 +46,12 @@ namespace NanoActor
 
             _memoryCache = new MemoryCache(cacheOptions);
 
-            _databaseLazy = new Lazy<IDatabase>(() => {
-                return _connectionFactory.GetDatabase().WithKeyPrefix($"{_serviceOptions.ServiceName}-");
-            });
+            
 
             _scriptsLazy = new Lazy<RedisScripts>(() => { return new RedisScripts(_database); });
         }
                         
-        public async Task<StageAddressQueryResponse> GetAddress(string actorTypeName, string actorId)
+        public async ValueTask<StageAddressQueryResponse> GetAddress(string actorTypeName, string actorId)
         {
             var key = string.Join(":", actorTypeName, actorId);
 
@@ -95,10 +91,12 @@ namespace NanoActor
             
         }
 
-        public async Task Refresh(string actorTypeName, string actorId)
+        public Task Refresh(string actorTypeName, string actorId)
         {
             var key = string.Join(":", actorTypeName, actorId);
             _memoryCache.Remove(key);
+
+            return Task.FromResult(0);
         }
 
         public async Task<string> Reallocate(string actorTypeName,string actorId,string oldStageId)
@@ -124,7 +122,7 @@ namespace NanoActor
 
         }
 
-        public async Task RegisterActor(string actorTypeName, string actorId, string stageId)
+        public async Task RegisterActor(string actorTypeName, string actorId, string stageId )
         {
             await _database.HashSetAsync(_actorDirectoryKey, string.Join(":", actorTypeName, actorId), stageId);            
         }
@@ -151,7 +149,6 @@ namespace NanoActor
         public async Task UnregisterActor(string actorTypeName,string actorId, string stageId)
         {
             var deleted = await _scripts.HashDeleteIfEqual(_actorDirectoryKey, string.Join(":", actorTypeName, actorId), stageId);
-                        
         }
     }
 }

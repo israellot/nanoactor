@@ -18,22 +18,22 @@ namespace NanoActor
     [MessagePackObject]
     public class RemoteStageMessage
     {
-        [MessagePack.Key(0)]
+        [Key(0)]
         public String Source { get; set; }
 
-        [MessagePack.Key(1)]
+        [Key(1)]
         public String Destination { get; set; }
 
-        [MessagePack.Key(2)]
+        [Key(2)]
         public RemoteMessageType MessageType { get; set; }
 
-        [MessagePack.Key(3)]
+        [Key(3)]
         public ActorResponse ActorResponse { get; set; }
         
-        [MessagePack.Key(4)]
+        [Key(4)]
         public ActorRequest ActorRequest { get; set; }
        
-        [MessagePack.Key(5)]
+        [Key(5)]
         public Ping Ping { get; set; }
 
     }
@@ -41,9 +41,9 @@ namespace NanoActor
     [MessagePackObject]
     public class Ping
     {
-        [MessagePack.Key(0)]       
+        [Key(0)]       
         public Guid Id { get; set; }
-        [MessagePack.Key(1)]
+        [Key(1)]
         public long Timestamp { get; set; }
 
         public Ping()

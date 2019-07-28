@@ -16,7 +16,7 @@ using NanoActor.Telemetry;
 
 namespace NanoActor.ClusterInstance
 {
-    public abstract class BaseStage
+    public abstract class BaseStage:IDisposable
     {
 
         protected IServiceCollection _serviceCollection;
@@ -161,32 +161,62 @@ namespace NanoActor.ClusterInstance
         {
             _remoteServer = _serviceProvider.GetRequiredService<RemoteStageServer>();
 
-            Task.Factory.StartNew(_remoteServer.Run);
-            
+            _remoteServer.Run().GetAwaiter().GetResult();
+        }
 
+        public void RunClient()
+        {
+            ConnectionMonitor();
         }
 
         public void StopServer()
         {
-            _remoteServer = _serviceProvider.GetRequiredService<RemoteStageServer>();
+            try
+            {
+                _remoteServer = _serviceProvider.GetRequiredService<RemoteStageServer>();
 
 
-            _remoteServer.Stop();
+                _remoteServer.Stop();
+            }
+            catch { }
+           
 
         }
 
-        public async Task<Boolean> Connected()
+        public Boolean ClientConnected { get; private set; }
+
+
+        private void ConnectionMonitor()
         {
-            var stages = await _stageDirectory.GetAllStages();
+            Task.Run(async () => {
 
-            foreach(var stage in stages)
-            {
-                var pingResult = await _remoteClient.PingStage(stage);
+                while (!_isDisposed)
+                {
+                    try
+                    {
+                        await Task.Delay(2500);
 
-                if (pingResult.HasValue)
-                    return true;
-            }
-            return false;
+                        var stages = await _stageDirectory.GetAllStages();
+
+                        var connected = false;
+                        foreach (var stage in stages)
+                        {
+                            var pingResult = await _remoteClient.PingStage(stage);
+
+                            if (pingResult.HasValue)
+                            {
+                                connected = true;
+                                break;
+                            }
+                        }
+                        ClientConnected = connected;
+                    }
+                    catch { }
+                    
+                }
+
+            });
+           
 
         }
 
@@ -210,5 +240,10 @@ namespace NanoActor.ClusterInstance
             return _remoteServer.MessageBacklog();
         }
 
+        private bool _isDisposed;
+        public void Dispose()
+        {
+            _isDisposed = true;
+        }
     }
 }

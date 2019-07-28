@@ -23,8 +23,16 @@ namespace NanoActor.Redis
             _redisOptions = redisOptions.Value;
 
             _multiplexerLazy = new Lazy<IConnectionMultiplexer>(() => {
+
+                var connectionOptions = ConfigurationOptions.Parse(_redisOptions.ConnectionString);
+
+                connectionOptions.AbortOnConnectFail = false;
+                connectionOptions.ConnectRetry = Int32.MaxValue;
+                connectionOptions.ResolveDns = true;
+
                 var m = ConnectionMultiplexer.Connect(_redisOptions.ConnectionString);
-                                
+                               
+
                 return m;
             });
 

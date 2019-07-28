@@ -32,20 +32,21 @@ namespace NanoActor.Test.Host
                 options.AddJsonFile("appsettings.json");
             });
 
-            stage.RunServer();
-
 
             Task.Run(() => {
                 while (true)
                 {
-                    Thread.Sleep(3000);
+                    Thread.Sleep(30000);
 
-               
+                    stage.StopServer();
+
                     Console.WriteLine($"Server Backlog: {stage.InboundBacklogCount()}");
                     Console.WriteLine();
                 }
 
             });
+
+            stage.RunServer();
 
 
             Console.ReadKey();

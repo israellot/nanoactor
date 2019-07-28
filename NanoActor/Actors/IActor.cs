@@ -18,5 +18,7 @@ namespace NanoActor
 
     public class WorkerActor : Attribute { }
     public class AllowParallel : Attribute { }
+
+    public class AlwaysOn : Attribute { }
     
 }

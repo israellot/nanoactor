@@ -29,7 +29,7 @@ namespace NanoActor.Directory
             return $"{actorTypeName}:{actorId}";
         }
 
-        public async Task<StageAddressQueryResponse> GetAddress(string actorTypeName, string actorId)
+        public async ValueTask<StageAddressQueryResponse> GetAddress(string actorTypeName, string actorId)
         {
             if (_hashset.TryGetValue(GetStringKey(actorTypeName, actorId), out var stageId))
             {

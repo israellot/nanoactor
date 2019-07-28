@@ -96,18 +96,15 @@ namespace NanoActor.Socket.Redis
                 {
                     ConfigurationOptions config = ConfigurationOptions.Parse(_redisOptions.ConnectionString);
                     config.ConnectTimeout = 10000;
-                    config.ConnectRetry = 15;
-                    config.ReconnectRetryPolicy = new LinearRetry(5000);
-                    config.SyncTimeout = 5000;
-                    config.ResponseTimeout = 10000;
+                    config.ConnectRetry = Int32.MaxValue;
+                    config.SyncTimeout = 2500;
+                    config.ResolveDns = true;
 
                     _multiplexer = ConnectionMultiplexer.Connect(config);
-                    
 
                     _multiplexer.InternalError+= (sender,e)=> {
                         if (e.Exception != null)
-                            _telemetry.Exception(e.Exception);
-                                                
+                            _telemetry.Exception(e.Exception);                                                
                     };
 
                     _multiplexer.ConnectionFailed += (sender, e) => {
@@ -120,8 +117,6 @@ namespace NanoActor.Socket.Redis
                         if (e.Exception != null)
                             _telemetry.Exception(e.Exception);
                     };
-
-                               
 
                     break;
                 }

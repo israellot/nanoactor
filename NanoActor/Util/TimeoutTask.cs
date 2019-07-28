@@ -8,7 +8,6 @@ namespace NanoActor.Util
 {
     internal struct VoidTypeStruct { }  // See Footnote #1
 
-
     public static class TimeoutTask
     {
         internal static void MarshalTaskResults<TResult>(

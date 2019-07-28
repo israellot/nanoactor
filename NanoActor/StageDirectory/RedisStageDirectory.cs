@@ -21,15 +21,13 @@ namespace NanoActor
 
         NanoServiceOptions _serviceOptions;
 
-        Lazy<IDatabase> _databaseLazy;
-
         ITransportSerializer _serializer;
 
         ILogger<RedisStageDirectory> _logger;
 
         IMemoryCache _memoryCache;
 
-        IDatabase _database => _databaseLazy.Value;
+        IDatabase _database => _connectionFactory.GetDatabase().WithKeyPrefix($"{_serviceOptions.ServiceName}-");
 
         String _stageDirectoryKey = "stage-directory";
 
@@ -46,10 +44,6 @@ namespace NanoActor
             
             _memoryCache = new MemoryCache(cacheOptions);
 
-            _databaseLazy = new Lazy<IDatabase>(() => {
-                return _connectionFactory.GetDatabase().WithKeyPrefix($"{_serviceOptions.ServiceName}-");
-            });
-
             _updateTask = Task.Run(async () => {
                 while (true)
                 {
@@ -58,7 +52,9 @@ namespace NanoActor
                         await GetAllStages(true);
                         await Task.Delay(TimeSpan.FromSeconds(1));
                     }
-                    catch{ }
+                    catch{
+                        await Task.Delay(TimeSpan.FromSeconds(2));
+                    }
                 }
                 
             });
@@ -73,7 +69,7 @@ namespace NanoActor
             return true;
         }
 
-        public async Task<List<string>> GetAllStages(Boolean forceUpdate=false)
+        public async ValueTask<List<string>> GetAllStages(Boolean forceUpdate=false)
         {
             List<string> stages;
 
@@ -100,7 +96,7 @@ namespace NanoActor
             await _database.SetRemoveAsync(_stageDirectoryKey, stageId);
         }
 
-        public async Task<bool> IsLive(string stageId)
+        public async ValueTask<bool> IsLive(string stageId)
         {
             var allStages = await this.GetAllStages();
             return allStages.Contains(stageId);

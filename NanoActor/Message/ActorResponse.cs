@@ -11,19 +11,19 @@ namespace NanoActor
     [MessagePackObject]
     public class ActorResponse
     {
-        [MessagePack.Key(0)]
+        [Key(0)]
         public Guid Id { get; set; }
 
-        [MessagePack.Key(1)]
+        [Key(1)]
         public Boolean Success { get; set; }
 
-        [MessagePack.Key(2)]
+        [Key(2)]
         public Boolean NotFound { get; set; }
 
-        [MessagePack.Key(3)]
+        [Key(3)]
         public Exception Exception { get; set; }
 
-        [MessagePack.Key(4)]
+        [Key(4)]
         public byte[] Response { get; set; }
 
         

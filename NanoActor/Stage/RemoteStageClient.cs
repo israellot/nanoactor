@@ -33,7 +33,6 @@ namespace NanoActor
         ConcurrentDictionary<Guid, Tuple<SemaphoreSlim, ActorResponse>> _serverResponseBuffer = new ConcurrentDictionary<Guid, Tuple<SemaphoreSlim, ActorResponse>>();
         ConcurrentDictionary<Guid, SemaphoreSlim> _pingResponseBuffer = new ConcurrentDictionary<Guid, SemaphoreSlim>();
 
-        ObjectPool<SemaphoreSlim> _semaphorePool = new ObjectPool<SemaphoreSlim>(()=>new SemaphoreSlim(0,1));
 
         public RemoteStageClient(
             IServiceProvider services,
@@ -141,8 +140,7 @@ namespace NanoActor
                 }
                 else
                 {
-                    var semaphore = _semaphorePool.GetObject();
-                    while (semaphore.CurrentCount > 0) semaphore.Wait();
+                    var semaphore = new SemaphoreSlim(0, 1);
 
                     var queueItem = _localResponseBuffer[request.Id] = new Tuple<SemaphoreSlim, ActorResponse>(semaphore, null);
 
@@ -168,7 +166,6 @@ namespace NanoActor
                     }
                     finally
                     {
-                        _semaphorePool.PutObject(semaphore);
 
                     }
 
@@ -235,8 +232,7 @@ namespace NanoActor
             }
             else
             {
-                var semaphore = _semaphorePool.GetObject();
-                while (semaphore.CurrentCount > 0) semaphore.Wait();
+                var semaphore = new SemaphoreSlim(0, 1);
 
                 var queueItem = _serverResponseBuffer[request.Id] = new Tuple<SemaphoreSlim, ActorResponse>(semaphore, null);
 
@@ -254,12 +250,11 @@ namespace NanoActor
                         }
                     }
 
-                    _serverResponseBuffer.TryRemove(request.Id, out _);
                     throw new TimeoutException();
                 }
                 finally
                 {
-                    _semaphorePool.PutObject(semaphore);
+                    _serverResponseBuffer.TryRemove(request.Id, out _);
                 }
 
                
@@ -280,7 +275,7 @@ namespace NanoActor
             };
 
 
-            var semaphore = _pingResponseBuffer[message.Ping.Id] = _semaphorePool.GetObject();
+            var semaphore = _pingResponseBuffer[message.Ping.Id] = new SemaphoreSlim(0, 1);
 
             var sw = Stopwatch.StartNew();
 
@@ -305,7 +300,6 @@ namespace NanoActor
             }
             finally
             {
-                _semaphorePool.PutObject(semaphore);
                 _pingResponseBuffer.TryRemove(message.Ping.Id, out _);
                 sw.Stop();
             }
